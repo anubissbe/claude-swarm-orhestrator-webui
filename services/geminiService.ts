@@ -7,33 +7,60 @@ if (!process.env.API_KEY) {
   
 const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
+// --- Helper for retry logic ---
+const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+const isRetryableError = (error: any): boolean => {
+    const message = String(error?.message || '').toLowerCase();
+    // Check for common transient error statuses and messages
+    return message.includes('503') || message.includes('unavailable') || 
+           message.includes('500') || message.includes('internal');
+};
+
+
 export async function* generateSingleResponse(
     prompt: string, 
-    model: string
+    model: string,
+    maxRetries = 5,
+    initialDelay = 1000
 ): AsyncGenerator<string> {
-    try {
-        const responseStream = await ai.models.generateContentStream({
-            model: model,
-            contents: prompt,
-        });
+    let attempt = 0;
+    while (true) {
+        try {
+            const responseStream = await ai.models.generateContentStream({
+                model: model,
+                contents: prompt,
+            });
 
-        for await (const chunk of responseStream) {
-            // It's possible for a chunk to not have text.
-            if (chunk.text) {
-                yield chunk.text;
+            for await (const chunk of responseStream) {
+                // It's possible for a chunk to not have text.
+                if (chunk.text) {
+                    yield chunk.text;
+                }
             }
+            return; // Success, exit the loop
+        } catch (error) {
+            attempt++;
+            if (attempt >= maxRetries || !isRetryableError(error)) {
+                console.error(`Gemini API Stream Error (Attempt ${attempt}/${maxRetries}): Not retrying.`, error);
+                if (error instanceof Error) {
+                    throw error;
+                }
+                throw new Error('An unknown error occurred during API stream.');
+            }
+            const delay = initialDelay * Math.pow(2, attempt - 1) + (Math.random() * 1000); // Add jitter
+            console.warn(`Gemini API Stream failed (attempt ${attempt}/${maxRetries}). Retrying in ${Math.round(delay/1000)}s...`);
+            await sleep(delay);
         }
-    } catch (error) {
-        console.error("Gemini API Stream Error:", error);
-        if (error instanceof Error) {
-            throw error;
-        }
-        throw new Error('An unknown error occurred during API stream.');
     }
 };
 
 
-export const analyzeAndImprovePrompt = async (userPrompt: string): Promise<AnalysisResult> => {
+export const analyzeAndImprovePrompt = async (
+    userPrompt: string,
+    maxRetries = 5,
+    initialDelay = 1000
+): Promise<AnalysisResult> => {
     const systemInstruction = `You are a senior software architect and project planner for a multi-agent AI swarm. Your goal is to analyze a user's high-level project request and break it down into a comprehensive plan that the AI swarm can execute.
 
 You must:
@@ -78,26 +105,35 @@ Respond ONLY with a valid JSON object that adheres to the provided schema.`;
         required: ["improvedPrompt", "agents", "tools"]
     };
 
-    try {
-        const response = await ai.models.generateContent({
-            model: 'gemini-2.5-pro',
-            contents: userPrompt,
-            config: {
-                systemInstruction,
-                responseMimeType: "application/json",
-                responseSchema: schema,
-            },
-        });
-        
-        const jsonText = response.text.trim();
-        const result = JSON.parse(jsonText);
-        return result;
+    let attempt = 0;
+    while (true) {
+        try {
+            const response = await ai.models.generateContent({
+                model: 'gemini-2.5-pro',
+                contents: userPrompt,
+                config: {
+                    systemInstruction,
+                    responseMimeType: "application/json",
+                    responseSchema: schema,
+                },
+            });
+            
+            const jsonText = response.text.trim();
+            const result = JSON.parse(jsonText);
+            return result; // Success, return result
 
-    } catch (error) {
-        console.error("Gemini Analysis API Error:", error);
-        if (error instanceof Error) {
-            throw new Error(`Failed to analyze prompt: ${error.message}`);
+        } catch (error) {
+            attempt++;
+            if (attempt >= maxRetries || !isRetryableError(error)) {
+                console.error(`Gemini Analysis API Error (Attempt ${attempt}/${maxRetries}): Not retrying.`, error);
+                if (error instanceof Error) {
+                    throw new Error(`Failed to analyze prompt: ${error.message}`);
+                }
+                throw new Error('An unknown error occurred during prompt analysis.');
+            }
+            const delay = initialDelay * Math.pow(2, attempt - 1) + (Math.random() * 1000); // Add jitter
+            console.warn(`Gemini Analysis API failed (attempt ${attempt}/${maxRetries}). Retrying in ${Math.round(delay/1000)}s...`);
+            await sleep(delay);
         }
-        throw new Error('An unknown error occurred during prompt analysis.');
     }
 };

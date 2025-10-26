@@ -1,3 +1,4 @@
+
 import React, { useState, useCallback } from 'react';
 import ConfigPanel from './components/ConfigPanel';
 import ResultsDisplay from './components/ResultsDisplay';
@@ -81,7 +82,7 @@ function App() {
         setResponses(prev =>
           prev.map(r =>
             r.id === responseItem.id
-              ? { ...r, status: ResponseStatus.ERROR, error: error.message || 'An unknown stream error occurred' }
+              ? { ...r, status: ResponseStatus.ERROR, error: error.stack || error.message || 'An unknown stream error occurred' }
               : r
           )
         );
@@ -131,6 +132,7 @@ function App() {
             isLoading={isLoading} 
             swarmError={swarmError}
             onDismissSwarmError={() => setSwarmError(null)}
+            analysisResult={analysisResult}
           />
         </div>
       </main>

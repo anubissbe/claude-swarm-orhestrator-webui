@@ -1,0 +1,5 @@
+{
+  "name": "Swarm Orchestrator",
+  "description": "A web UI to visually manage and orchestrate parallel requests to the Gemini API, inspired by the concept of 'claude-swarm'. Enter a prompt, configure the swarm size, and watch as responses are generated in real-time.",
+  "requestFramePermissions": []
+}

@@ -45,57 +45,57 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({
     if (!analysisResult) return null;
     
     return (
-      <div className="space-y-4 text-sm border-t border-gray-700 pt-4 mt-4 animate-fade-in">
-        <div>
-          <h3 className="font-semibold text-blue-300 mb-2">Improved Prompt</h3>
-          <p className="p-3 bg-gray-800 border border-gray-600 rounded-md text-gray-300 whitespace-pre-wrap">{analysisResult.improvedPrompt}</p>
-        </div>
-        <div>
-          <h3 className="font-semibold text-green-300 mb-2">Suggested Agents</h3>
-          <ul className="space-y-2">
-            {analysisResult.agents.map(agent => (
-              <li key={agent.name} className="p-2 bg-gray-800/50 rounded-md">
-                <strong className="text-gray-200">{agent.name}:</strong>
-                <span className="text-gray-400 ml-2">{agent.description}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-        <div>
-          <h3 className="font-semibold text-purple-300 mb-2">Suggested Tools</h3>
-          <ul className="space-y-2">
-            {analysisResult.tools.map(tool => (
-              <li key={tool.name} className="p-2 bg-gray-800/50 rounded-md">
-                <strong className="text-gray-200">{tool.name}:</strong>
-                <span className="text-gray-400 ml-2">{tool.description}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
+      <div className="space-y-4 text-sm animate-fade-in">
+        <details className="bg-slate-900/50 p-3 rounded-md border border-slate-700">
+            <summary className="font-semibold text-cyan-300 cursor-pointer">STRATEGIC BRIEFING</summary>
+            <p className="mt-2 p-2 bg-slate-800 border border-slate-600 rounded-md text-slate-300 whitespace-pre-wrap font-mono text-xs">{analysisResult.improvedPrompt}</p>
+        </details>
+        <details className="bg-slate-900/50 p-3 rounded-md border border-slate-700">
+            <summary className="font-semibold text-cyan-300 cursor-pointer">AGENT ROSTER</summary>
+            <ul className="mt-2 space-y-2">
+                {analysisResult.agents.map(agent => (
+                <li key={agent.name} className="p-2 bg-slate-800/70 rounded-md">
+                    <strong className="text-slate-200 font-mono">{agent.name}:</strong>
+                    <span className="text-slate-400 ml-2 text-xs">{agent.description}</span>
+                </li>
+                ))}
+            </ul>
+        </details>
+        <details className="bg-slate-900/50 p-3 rounded-md border border-slate-700">
+            <summary className="font-semibold text-cyan-300 cursor-pointer">TOOLKIT</summary>
+            <ul className="mt-2 space-y-2">
+                {analysisResult.tools.map(tool => (
+                <li key={tool.name} className="p-2 bg-slate-800/70 rounded-md">
+                    <strong className="text-slate-200 font-mono">{tool.name}:</strong>
+                    <span className="text-slate-400 ml-2 text-xs">{tool.description}</span>
+                </li>
+                ))}
+            </ul>
+        </details>
       </div>
     );
   };
   
   return (
-    <div className="w-full md:w-[450px] bg-gray-900/80 backdrop-blur-sm border-r border-gray-700/50 p-6 flex flex-col">
-      <div className="flex justify-between items-center">
-        <h2 className="text-2xl font-bold text-white">Configuration</h2>
+    <div className="w-full md:w-[450px] bg-slate-950/70 backdrop-blur-sm border-r border-slate-700/50 p-4 flex flex-col">
+      <div className="flex justify-between items-center flex-shrink-0">
+        <h2 className="text-lg font-bold text-white tracking-wider">COMMAND CONSOLE</h2>
         {(isAnalyzed || analysisError) && (
-           <button onClick={onReset} className="text-sm text-gray-400 hover:text-white flex items-center transition">
-             <ResetIcon /> Start Over
+           <button onClick={onReset} className="text-sm text-slate-400 hover:text-white flex items-center transition" title="Start Over">
+             <ResetIcon />
            </button>
         )}
       </div>
 
-      <div className="flex-grow mt-6 overflow-y-auto space-y-6 pr-2">
+      <div className="flex-grow mt-4 overflow-y-auto space-y-4 pr-2">
         <div>
-          <label htmlFor="prompt" className="block text-sm font-medium text-gray-300 mb-2">
-            Your Project Idea
+          <label htmlFor="prompt" className="block text-sm font-medium text-cyan-300 mb-2">
+            MISSION OBJECTIVE
           </label>
           <textarea
             id="prompt"
-            rows={isAnalyzed ? 3 : 6}
-            className="w-full p-3 bg-gray-800 border border-gray-600 rounded-md text-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition-all duration-300"
+            rows={isAnalyzed ? 2 : 5}
+            className="w-full p-2 bg-slate-900 border border-slate-700 rounded-md text-slate-200 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition-all duration-300 text-sm"
             placeholder="e.g., Build a simple to-do list app with React."
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
@@ -114,10 +114,10 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({
         {renderAnalysisSection()}
 
         {isAnalyzed && (
-          <div className="border-t border-gray-700 pt-4 mt-4 space-y-6">
+          <div className="border-t border-slate-700 pt-4 mt-4 space-y-4">
             <div>
-              <label htmlFor="swarmSize" className="block text-sm font-medium text-gray-300 mb-2">
-                Swarm Size: <span className="font-bold text-blue-400">{swarmSize}</span>
+              <label htmlFor="swarmSize" className="block text-sm font-medium text-cyan-300 mb-2">
+                SWARM SIZE: <span className="font-bold text-cyan-300 font-mono">{swarmSize} Agents</span>
               </label>
               <input
                 id="swarmSize"
@@ -126,18 +126,18 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({
                 max="50"
                 value={swarmSize}
                 onChange={(e) => setSwarmSize(Number(e.target.value))}
-                className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer"
+                className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"
                 disabled={isLoading}
               />
             </div>
 
             <div>
-              <label htmlFor="model" className="block text-sm font-medium text-gray-300 mb-2">
-                Swarm Model
+              <label htmlFor="model" className="block text-sm font-medium text-cyan-300 mb-2">
+                AGENT MODEL
               </label>
               <select
                 id="model"
-                className="w-full p-3 bg-gray-800 border border-gray-600 rounded-md text-gray-200 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition"
+                className="w-full p-2 bg-slate-800 border border-slate-600 rounded-md text-slate-200 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition text-sm"
                 value={model}
                 onChange={(e) => setModel(e.target.value)}
                 disabled={isLoading}
@@ -150,34 +150,34 @@ const ConfigPanel: React.FC<ConfigPanelProps> = ({
         )}
       </div>
 
-      <div className="mt-6">
+      <div className="mt-4 flex-shrink-0">
         {isInitialState && (
           <button
             onClick={onAnalyze}
             disabled={isAnalyzing || !prompt}
-            className="w-full flex items-center justify-center px-4 py-3 bg-purple-600 text-white font-bold rounded-md hover:bg-purple-700 disabled:bg-gray-500 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105"
+            className="w-full flex items-center justify-center px-4 py-3 bg-violet-600 text-white font-bold rounded-md hover:bg-violet-700 disabled:bg-slate-600 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-[0_0_15px_rgba(139,92,246,0.5)]"
           >
             <MagicWandIcon />
-            {isAnalyzing ? 'Analyzing...' : 'Analyze & Plan'}
+            {isAnalyzing ? 'ANALYZING...' : 'INITIALIZE PLAN'}
           </button>
         )}
         {isAnalyzing && (
             <button
                 disabled
-                className="w-full flex items-center justify-center px-4 py-3 bg-purple-600 text-white font-bold rounded-md disabled:bg-gray-500 disabled:cursor-not-allowed transition-all duration-300"
+                className="w-full flex items-center justify-center px-4 py-3 bg-slate-600 text-white font-bold rounded-md"
               >
               <svg className="animate-spin h-5 w-5 mr-3 text-white" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path></svg>
-              Analyzing Project...
+              ANALYZING...
             </button>
         )}
         {isAnalyzed && (
           <button
             onClick={onLaunch}
             disabled={isSwarming || !analysisResult}
-            className="w-full flex items-center justify-center px-4 py-3 bg-blue-600 text-white font-bold rounded-md hover:bg-blue-700 disabled:bg-gray-500 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105"
+            className="w-full flex items-center justify-center px-4 py-3 bg-cyan-600 text-white font-bold rounded-md hover:bg-cyan-700 disabled:bg-slate-600 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-[0_0_15px_rgba(34,211,238,0.5)]"
           >
             <RocketIcon />
-            {isSwarming ? 'Swarm In Progress...' : 'Launch Swarm'}
+            {isSwarming ? 'SWARM IN PROGRESS...' : 'DEPLOY SWARM'}
           </button>
         )}
       </div>

@@ -17,6 +17,32 @@
 }
 </script>
 <style>
+    /* Base & Background */
+    body {
+        background-color: #020617; /* slate-950 */
+        color: #cbd5e1; /* slate-300 */
+        overflow: hidden;
+    }
+    .background-grid {
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100vw;
+        height: 100vh;
+        background-image:
+            linear-gradient(rgba(100, 116, 139, 0.1) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(100, 116, 139, 0.1) 1px, transparent 1px);
+        background-size: 30px 30px;
+        animation: pan-grid 60s linear infinite;
+        z-index: -1;
+    }
+
+    @keyframes pan-grid {
+        0% { background-position: 0 0; }
+        100% { background-position: 300px 300px; }
+    }
+
+    /* Animations */
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(-10px); }
       to { opacity: 1; transform: translateY(0); }
@@ -37,12 +63,65 @@
     .animate-scale-in {
         animation: scaleIn 0.3s ease-out forwards;
     }
-    details > summary {
-      list-style: none;
+    @keyframes spin {
+        from { transform: rotate(0deg); }
+        to { transform: rotate(360deg); }
     }
-    details > summary::-webkit-details-marker {
-      display: none;
+
+    /* Hexagon Grid */
+    .hex-grid {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 8px;
+        padding: 1rem;
     }
+    .hex {
+        position: relative;
+        width: 120px;
+        height: 138.56px;
+        clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+        background-color: rgba(30, 41, 59, 0.5); /* slate-800/50 */
+        transition: all 0.3s ease;
+        cursor: pointer;
+        border: none;
+        outline: none;
+    }
+    .hex-inner {
+        position: absolute;
+        inset: 2px;
+        clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
+        background-color: #0f172a; /* slate-900 */
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-direction: column;
+        padding: 10px;
+        text-align: center;
+        font-family: monospace;
+    }
+
+    .hex.pending { animation: hex-pulse 2s infinite; }
+    .hex.success { background: #10b981; }
+    .hex.error { background: #ef4444; animation: hex-glitch 0.5s infinite; }
+    .hex:hover, .hex.selected { transform: scale(1.05); background: #22d3ee; }
+
+    @keyframes hex-pulse {
+        0%, 100% { background: #0ea5e9; } /* sky-500 */
+        50% { background: #67e8f9; } /* cyan-300 */
+    }
+    @keyframes hex-glitch {
+        0% { transform: translate(0, 0) scale(1.05); }
+        20% { transform: translate(-2px, 2px) scale(1.05); }
+        40% { transform: translate(-2px, -2px) scale(1.05); }
+        60% { transform: translate(2px, 2px) scale(1.05); }
+        80% { transform: translate(2px, -2px) scale(1.05); }
+        100% { transform: translate(0, 0) scale(1.05); }
+    }
+
+    /* Custom Components */
+    details > summary { list-style: none; }
+    details > summary::-webkit-details-marker { display: none; }
     details > summary::before {
       content: '▶';
       margin-right: 0.5rem;
@@ -50,13 +129,21 @@
       display: inline-block;
       transition: transform 0.2s ease-in-out;
     }
-    details[open] > summary::before {
-      transform: rotate(90deg);
-    }
+    details[open] > summary::before { transform: rotate(90deg); }
+    .progress-ring { transform: rotate(-90deg); }
+    .progress-ring__circle { transition: stroke-dashoffset 0.35s; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 8px; }
+    ::-webkit-scrollbar-track { background: #1e293b; }
+    ::-webkit-scrollbar-thumb { background: #38bdf8; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #0ea5e9; }
+
   </style>
 </head>
-  <body class="bg-gray-900">
+  <body class="font-sans">
     <div id="root"></div>
+    <div class="background-grid"></div>
     <script type="module" src="/index.tsx"></script>
   </body>
 </html>

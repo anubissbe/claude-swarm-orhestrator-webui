@@ -29,7 +29,7 @@ const AgentDetailModal: React.FC<AgentDetailModalProps> = ({ agent, response, on
                 return { 
                     icon: <LoadingSpinner />, 
                     text: 'Working...', 
-                    textColor: 'text-blue-400'
+                    textColor: 'text-cyan-400'
                 };
         }
     };
@@ -45,17 +45,17 @@ const AgentDetailModal: React.FC<AgentDetailModalProps> = ({ agent, response, on
 
             return (
                 <div>
-                    <h3 className="font-semibold text-gray-300 mb-2">Error Details</h3>
-                    <div className="bg-gray-900/70 border border-gray-700 rounded-md p-3 max-h-80 overflow-y-auto font-mono text-sm">
-                        <p className="text-red-300 whitespace-pre-wrap font-semibold">{message}</p>
+                    <h3 className="font-semibold text-slate-300 mb-2">Error Details</h3>
+                    <div className="bg-slate-900/70 border border-slate-700 rounded-md p-3 max-h-80 overflow-y-auto font-mono text-sm">
+                        <p className="text-rose-400 whitespace-pre-wrap font-semibold">{message}</p>
                         {stackTrace && (
                             <>
-                                <div className="border-t border-gray-600/50 my-3"></div>
+                                <div className="border-t border-slate-600/50 my-3"></div>
                                 <details>
-                                    <summary className="text-xs text-gray-500 cursor-pointer hover:text-gray-300 transition-colors">
+                                    <summary className="text-xs text-slate-500 cursor-pointer hover:text-slate-300 transition-colors">
                                         <span className="font-semibold">Show Stack Trace</span>
                                     </summary>
-                                    <pre className="mt-2 text-gray-400 whitespace-pre-wrap opacity-80 text-xs">{stackTrace}</pre>
+                                    <pre className="mt-2 text-slate-400 whitespace-pre-wrap opacity-80 text-xs">{stackTrace}</pre>
                                 </details>
                             </>
                         )}
@@ -66,17 +66,17 @@ const AgentDetailModal: React.FC<AgentDetailModalProps> = ({ agent, response, on
 
         return (
             <div>
-                <h3 className="font-semibold text-gray-300 mb-2">Live Output</h3>
-                <div className="bg-gray-900/70 border border-gray-700 rounded-md p-3 max-h-80 overflow-y-auto">
+                <h3 className="font-semibold text-slate-300 mb-2">Live Output</h3>
+                <div className="bg-slate-900/70 border border-slate-700 rounded-md p-3 max-h-80 overflow-y-auto">
                     {response.content ? (
-                        <pre className="text-sm text-gray-300 whitespace-pre-wrap font-mono">
+                        <pre className="text-sm text-slate-300 whitespace-pre-wrap font-mono">
                             {response.content}
                             {response.status === ResponseStatus.PENDING && (
-                                <span className="blinking-cursor font-bold text-blue-300">▍</span>
+                                <span className="blinking-cursor font-bold text-cyan-300">▍</span>
                             )}
                         </pre>
                     ) : (
-                        <p className="text-gray-500 italic">No output received yet...</p>
+                        <p className="text-slate-500 italic">No output received yet...</p>
                     )}
                 </div>
             </div>
@@ -92,15 +92,15 @@ const AgentDetailModal: React.FC<AgentDetailModalProps> = ({ agent, response, on
             aria-labelledby="agent-detail-title"
         >
             <div 
-                className="bg-gray-800 border border-gray-700 rounded-lg shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col animate-scale-in" 
+                className="bg-slate-800 border border-slate-700 rounded-lg shadow-2xl shadow-cyan-500/10 w-full max-w-2xl max-h-[90vh] flex flex-col animate-scale-in" 
                 onClick={e => e.stopPropagation()}
             >
                 {/* Header */}
-                <div className="p-4 border-b border-gray-700 flex justify-between items-center flex-shrink-0">
-                    <h2 id="agent-detail-title" className="text-xl font-bold text-white">{agent.name}</h2>
+                <div className="p-4 border-b border-slate-700 flex justify-between items-center flex-shrink-0">
+                    <h2 id="agent-detail-title" className="text-xl font-bold text-white font-mono tracking-wider">{agent.name}</h2>
                     <button 
                         onClick={onClose} 
-                        className="p-1 rounded-full text-gray-400 hover:bg-gray-700 hover:text-white transition"
+                        className="p-1 rounded-full text-slate-400 hover:bg-slate-700 hover:text-white transition"
                         aria-label="Close modal"
                     >
                         <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -111,15 +111,15 @@ const AgentDetailModal: React.FC<AgentDetailModalProps> = ({ agent, response, on
                 
                 {/* Body */}
                 <div className="p-6 overflow-y-auto space-y-4">
-                    <div className="bg-gray-900/50 p-4 rounded-lg border border-gray-700/50">
-                        <h3 className="font-semibold text-gray-300 mb-2">Agent Description</h3>
-                        <p className={`text-gray-400 text-sm ${!agent.description && 'italic'}`}>
+                    <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-700/50">
+                        <h3 className="font-semibold text-slate-300 mb-2">Agent Description</h3>
+                        <p className={`text-slate-400 text-sm ${!agent.description && 'italic'}`}>
                             {agent.description || 'No description available.'}
                         </p>
                     </div>
 
                     <div>
-                        <h3 className="font-semibold text-gray-300 mb-2">Status</h3>
+                        <h3 className="font-semibold text-slate-300 mb-2">Status</h3>
                         <div className={`flex items-center text-sm font-medium ${statusInfo.textColor}`}>
                             <div className="w-5 h-5 mr-2">{statusInfo.icon}</div>
                             <span>{statusInfo.text}</span>

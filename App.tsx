@@ -102,13 +102,13 @@ function App() {
   const isLoading = isAnalyzing || isSwarming;
 
   return (
-    <div className="min-h-screen bg-gray-900 text-gray-100 font-sans">
-      <header className="bg-gray-900/80 backdrop-blur-sm border-b border-gray-700/50 p-4 sticky top-0 z-10">
-        <h1 className="text-3xl font-bold text-center text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">
-          Swarm Orchestrator
+    <div className="min-h-screen text-slate-300 flex flex-col">
+      <header className="bg-slate-950/50 backdrop-blur-sm border-b border-slate-700/50 p-3 text-center sticky top-0 z-20">
+        <h1 className="text-2xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-cyan-300 to-violet-400 tracking-widest uppercase">
+          SWARM AI
         </h1>
       </header>
-      <main className="flex flex-col md:flex-row" style={{ height: 'calc(100vh - 65px)' }}>
+      <main className="flex flex-1 overflow-hidden">
         <ConfigPanel
           prompt={prompt}
           setPrompt={setPrompt}
@@ -126,7 +126,7 @@ function App() {
           onReset={handleReset}
           onDismissAnalysisError={() => setAnalysisError(null)}
         />
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto bg-slate-900/40">
           <ResultsDisplay 
             responses={responses} 
             isLoading={isLoading} 

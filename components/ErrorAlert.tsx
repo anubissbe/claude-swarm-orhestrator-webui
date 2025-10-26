@@ -9,14 +9,14 @@ interface ErrorAlertProps {
 
 const ErrorAlert: React.FC<ErrorAlertProps> = ({ title = "Error", message, onDismiss }) => {
   return (
-    <div className="bg-red-900/50 border border-red-500/50 rounded-lg p-4 my-4 animate-fade-in" role="alert">
+    <div className="bg-rose-900/50 border border-rose-500/50 rounded-lg p-3 my-2 animate-fade-in text-sm" role="alert">
       <div className="flex">
-        <div className="flex-shrink-0">
+        <div className="flex-shrink-0 pt-0.5">
           <ExclamationCircleIcon />
         </div>
-        <div className="ml-3">
-          <h3 className="text-sm font-semibold text-red-300">{title}</h3>
-          <div className="mt-2 text-sm text-red-400">
+        <div className="ml-3 flex-1">
+          <h3 className="font-semibold text-rose-300">{title}</h3>
+          <div className="mt-1 text-rose-400">
             <p>{message}</p>
           </div>
         </div>
@@ -25,7 +25,7 @@ const ErrorAlert: React.FC<ErrorAlertProps> = ({ title = "Error", message, onDis
             <button
               type="button"
               onClick={onDismiss}
-              className="inline-flex bg-red-900/0 rounded-md p-1.5 text-red-400 hover:bg-red-800/50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-red-900 focus:ring-red-500 transition-colors"
+              className="inline-flex rounded-md p-1.5 text-rose-400 hover:bg-rose-800/50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-rose-900 focus:ring-rose-500 transition-colors"
               aria-label="Dismiss"
             >
               <span className="sr-only">Dismiss</span>

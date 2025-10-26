@@ -1,6 +1,6 @@
 
-import React, { useState } from 'react';
-import { ResponseItem, ResponseStatus, AnalysisResult } from '../types';
+import React, { useState, useRef, useLayoutEffect } from 'react';
+import { ResponseItem, ResponseStatus, AnalysisResult, Tool } from '../types';
 import ErrorAlert from './ErrorAlert';
 import AgentDetailModal from './AgentDetailModal';
 import { LoadingSpinner, CheckCircleIcon, ExclamationCircleIcon, HexagonIcon } from './Icons';
@@ -57,6 +57,112 @@ const CircularProgressBar: React.FC<{ progress: number; completed: number; total
     );
 };
 
+const getStatusClass = (status: ResponseStatus) => {
+    switch (status) {
+        case ResponseStatus.SUCCESS: return 'success';
+        case ResponseStatus.ERROR: return 'error';
+        case ResponseStatus.PENDING:
+        default: return 'pending';
+    }
+};
+
+const getAgentStatusIcon = (status: ResponseStatus) => {
+    const iconProps = { className: "h-5 w-5 flex-shrink-0" };
+    switch (status) {
+        case ResponseStatus.SUCCESS:
+            return <CheckCircleIcon {...iconProps} />;
+        case ResponseStatus.ERROR:
+            return <ExclamationCircleIcon {...iconProps} />;
+        case ResponseStatus.PENDING:
+        default:
+            return <LoadingSpinner {...iconProps} />;
+    }
+};
+
+
+const SwarmNetworkGraph: React.FC<{
+    responses: ResponseItem[];
+    onNodeClick: (id: number) => void;
+    analysisResult: AnalysisResult;
+}> = ({ responses, onNodeClick, analysisResult }) => {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
+
+    useLayoutEffect(() => {
+        if (containerRef.current) {
+            const observer = new ResizeObserver(entries => {
+                const { width, height } = entries[0].contentRect;
+                setDimensions({ width, height });
+            });
+            observer.observe(containerRef.current);
+            return () => observer.disconnect();
+        }
+    }, []);
+    
+    const numAgents = responses.length;
+    const centerX = dimensions.width / 2;
+    const centerY = dimensions.height / 2;
+    const radius = Math.min(dimensions.width, dimensions.height) * 0.35;
+    
+    const nodes = responses.map((response, i) => {
+        const angle = (i / numAgents) * 2 * Math.PI - Math.PI / 2; // Start from top
+        return {
+            ...response,
+            x: centerX + radius * Math.cos(angle),
+            y: centerY + radius * Math.sin(angle),
+        };
+    });
+
+    return (
+        <div ref={containerRef} className="w-full h-full relative">
+            {/* Edges */}
+            <svg className="absolute top-0 left-0 w-full h-full" style={{ overflow: 'visible' }}>
+                {nodes.map(node => (
+                     <line 
+                        key={`line-${node.id}`} 
+                        x1={centerX} 
+                        y1={centerY} 
+                        x2={node.x} 
+                        y2={node.y} 
+                        className={`graph-edge ${getStatusClass(node.status)} ${node.activeTool ? 'tool-active' : ''}`}
+                    />
+                ))}
+            </svg>
+            
+            {/* Center Node */}
+            <div 
+              className="absolute flex flex-col items-center justify-center w-32 h-32 rounded-full bg-slate-800 border-2 border-cyan-400 shadow-[0_0_20px_rgba(34,211,238,0.5)] z-10"
+              style={{ top: centerY, left: centerX, transform: 'translate(-50%, -50%)' }}
+            >
+                <HexagonIcon className="w-8 h-8 text-cyan-400"/>
+                <span className="text-xs font-bold text-slate-300 mt-1 uppercase tracking-wider">Mission</span>
+            </div>
+
+            {/* Agent Nodes */}
+            {nodes.map((node, i) => {
+                 const agent = analysisResult.agents[node.id % analysisResult.agents.length];
+                 return (
+                    <button
+                        key={`node-${node.id}`}
+                        onClick={() => onNodeClick(node.id)}
+                        className={`graph-agent-node ${getStatusClass(node.status)} ${node.activeTool ? 'tool-active' : ''}`}
+                        style={{
+                            top: node.y,
+                            left: node.x,
+                            animationDelay: `${i * 50}ms`,
+                        }}
+                        aria-label={`View details for agent ${agent.name}`}
+                    >
+                        {getAgentStatusIcon(node.status)}
+                        <span className="text-sm font-bold text-slate-300 truncate mt-1.5">{agent.name}</span>
+                        <span className="text-xs text-slate-500 uppercase">{node.status}</span>
+                    </button>
+                 );
+            })}
+        </div>
+    );
+};
+
 
 const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ responses, isLoading, swarmError, onDismissSwarmError, analysisResult }) => {
     const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
@@ -80,28 +186,9 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ responses, isLoading, s
 
     const selectedResponse = responses.find(r => r.id === selectedAgentId);
     const selectedAgent = analysisResult && selectedResponse ? analysisResult.agents[selectedResponse.id % analysisResult.agents.length] : null;
-
-    const getStatusClass = (status: ResponseStatus) => {
-        switch (status) {
-            case ResponseStatus.SUCCESS: return 'success';
-            case ResponseStatus.ERROR: return 'error';
-            case ResponseStatus.PENDING:
-            default: return 'pending';
-        }
-    };
-    
-    const getAgentStatusIcon = (status: ResponseStatus) => {
-        const iconProps = { className: "h-4 w-4 flex-shrink-0" };
-        switch (status) {
-            case ResponseStatus.SUCCESS:
-                return <CheckCircleIcon {...iconProps} />;
-            case ResponseStatus.ERROR:
-                return <ExclamationCircleIcon {...iconProps} />;
-            case ResponseStatus.PENDING:
-            default:
-                return <LoadingSpinner {...iconProps} />;
-        }
-    };
+    const assignedToolsForModal = (analysisResult && selectedAgent?.tools) 
+        ? analysisResult.tools.filter(tool => selectedAgent.tools!.includes(tool.name)) 
+        : [];
 
     return (
         <div className="flex-grow p-4 md:p-6 lg:p-8 flex flex-col h-full">
@@ -119,29 +206,12 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ responses, isLoading, s
                     <CircularProgressBar progress={progress} completed={completedCount} total={responses.length} />
                 </div>
 
-                <div className="flex-1 overflow-y-auto">
-                    <div className="hex-grid">
-                        {responses.map((response) => {
-                            const agent = analysisResult.agents[response.id % analysisResult.agents.length];
-                            
-                            return (
-                                <button 
-                                    key={response.id}
-                                    onClick={() => setSelectedAgentId(response.id)}
-                                    className={`hex ${getStatusClass(response.status)} ${selectedAgentId === response.id ? 'selected' : ''}`}
-                                    aria-label={`View details for agent ${agent.name}`}
-                                >
-                                   <div className="hex-inner">
-                                        <div className="flex items-center justify-center gap-1.5 w-full">
-                                            {getAgentStatusIcon(response.status)}
-                                            <span className="text-sm font-bold text-slate-300 truncate">{agent.name}</span>
-                                        </div>
-                                       <span className="text-xs text-slate-500 uppercase mt-1">{response.status}</span>
-                                   </div>
-                                </button>
-                            );
-                        })}
-                    </div>
+                <div className="flex-1 min-h-0">
+                   <SwarmNetworkGraph
+                        responses={responses}
+                        onNodeClick={setSelectedAgentId}
+                        analysisResult={analysisResult}
+                   />
                 </div>
               </>
             )}
@@ -150,6 +220,7 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ responses, isLoading, s
                 <AgentDetailModal
                     agent={selectedAgent}
                     response={selectedResponse}
+                    assignedTools={assignedToolsForModal}
                     onClose={() => setSelectedAgentId(null)}
                 />
             )}

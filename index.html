@@ -68,55 +68,64 @@
         to { transform: rotate(360deg); }
     }
 
-    /* Hexagon Grid */
-    .hex-grid {
-        display: flex;
-        flex-wrap: wrap;
-        justify-content: center;
-        gap: 8px;
-        padding: 1rem;
+    /* Swarm Network Graph */
+    .graph-edge {
+        stroke-width: 1.5px;
+        transition: stroke 0.5s ease, stroke-width 0.3s ease;
+        opacity: 0.7;
     }
-    .hex {
-        position: relative;
-        width: 120px;
-        height: 138.56px;
-        clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
-        background-color: rgba(30, 41, 59, 0.5); /* slate-800/50 */
-        transition: all 0.3s ease;
-        cursor: pointer;
-        border: none;
-        outline: none;
+    .graph-edge.pending { stroke: #0ea5e9; stroke-dasharray: 4; animation: dash-flow 2s linear infinite; }
+    .graph-edge.success { stroke: #10b981; }
+    .graph-edge.error { stroke: #ef4444; }
+    .graph-edge.tool-active {
+        stroke: #a78bfa; /* violet-400 */
+        stroke-width: 2.5px;
     }
-    .hex-inner {
+
+
+    @keyframes dash-flow {
+        to { stroke-dashoffset: -20; }
+    }
+
+    .graph-agent-node {
         position: absolute;
-        inset: 2px;
-        clip-path: polygon(50% 0%, 100% 25%, 100% 75%, 50% 100%, 0% 75%, 0% 25%);
-        background-color: #0f172a; /* slate-900 */
+        width: 100px;
+        height: 100px;
+        margin: -50px 0 0 -50px; /* center the node on its coords */
+        background-color: #0f172a;
+        border-radius: 50%;
         display: flex;
         align-items: center;
         justify-content: center;
         flex-direction: column;
-        padding: 10px;
+        padding: 8px;
         text-align: center;
         font-family: monospace;
+        cursor: pointer;
+        transition: all 0.3s ease;
+        z-index: 10;
+        opacity: 0;
+        animation: node-fly-in 0.8s cubic-bezier(0.25, 1, 0.5, 1) forwards;
+    }
+    .graph-agent-node:hover {
+        transform: scale(1.1);
+        z-index: 20;
+    }
+    .graph-agent-node.pending { border: 2px solid #0ea5e9; animation: node-fly-in 0.8s cubic-bezier(0.25, 1, 0.5, 1) forwards, node-pulse 2s infinite; }
+    .graph-agent-node.success { border: 2px solid #10b981; }
+    .graph-agent-node.error { border: 2px solid #ef4444; }
+    .graph-agent-node.tool-active {
+        border-color: #a78bfa; /* violet-400 */
+        box-shadow: 0 0 20px 8px rgba(167, 139, 250, 0.4);
     }
 
-    .hex.pending { animation: hex-pulse 2s infinite; }
-    .hex.success { background: #10b981; }
-    .hex.error { background: #ef4444; animation: hex-glitch 0.5s infinite; }
-    .hex:hover, .hex.selected { transform: scale(1.05); background: #22d3ee; }
-
-    @keyframes hex-pulse {
-        0%, 100% { background: #0ea5e9; } /* sky-500 */
-        50% { background: #67e8f9; } /* cyan-300 */
+    @keyframes node-fly-in {
+        from { opacity: 0; transform: scale(0.2); }
+        to { opacity: 1; transform: scale(1); }
     }
-    @keyframes hex-glitch {
-        0% { transform: translate(0, 0) scale(1.05); }
-        20% { transform: translate(-2px, 2px) scale(1.05); }
-        40% { transform: translate(-2px, -2px) scale(1.05); }
-        60% { transform: translate(2px, 2px) scale(1.05); }
-        80% { transform: translate(2px, -2px) scale(1.05); }
-        100% { transform: translate(0, 0) scale(1.05); }
+    @keyframes node-pulse {
+        0%, 100% { box-shadow: 0 0 0 0 rgba(14, 165, 233, 0.7); }
+        50% { box-shadow: 0 0 15px 5px rgba(14, 165, 233, 0); }
     }
 
     /* Custom Components */

@@ -1,14 +1,16 @@
+
 import React from 'react';
-import { Agent, ResponseItem, ResponseStatus } from '../types';
+import { Agent, ResponseItem, ResponseStatus, Tool } from '../types';
 import { LoadingSpinner, CheckCircleIcon, ExclamationCircleIcon } from './Icons';
 
 interface AgentDetailModalProps {
   agent: Agent;
   response: ResponseItem;
+  assignedTools: Tool[];
   onClose: () => void;
 }
 
-const AgentDetailModal: React.FC<AgentDetailModalProps> = ({ agent, response, onClose }) => {
+const AgentDetailModal: React.FC<AgentDetailModalProps> = ({ agent, response, assignedTools, onClose }) => {
     
     const getStatusInfo = () => {
         switch (response.status) {
@@ -124,6 +126,29 @@ const AgentDetailModal: React.FC<AgentDetailModalProps> = ({ agent, response, on
                             <div className="w-5 h-5 mr-2">{statusInfo.icon}</div>
                             <span>{statusInfo.text}</span>
                         </div>
+                    </div>
+
+                    <div>
+                        <h3 className="font-semibold text-slate-300 mb-2">Assigned Toolkit</h3>
+                        {assignedTools.length > 0 ? (
+                            <ul className="space-y-2">
+                                {assignedTools.map(tool => (
+                                    <li key={tool.name} className="bg-slate-900/50 p-3 rounded-lg border border-slate-700/50">
+                                        <div className="flex justify-between items-center">
+                                            <strong className="text-slate-200 font-mono text-sm">{tool.name}</strong>
+                                            {response.activeTool === tool.name && (
+                                                <span className="text-xs font-bold text-violet-300 bg-violet-900/50 px-2 py-1 rounded-full animate-pulse">
+                                                    IN USE
+                                                </span>
+                                            )}
+                                        </div>
+                                        <p className="text-slate-400 text-sm mt-1">{tool.description}</p>
+                                    </li>
+                                ))}
+                            </ul>
+                        ) : (
+                            <p className="text-slate-500 italic text-sm">No specific tools assigned to this agent.</p>
+                        )}
                     </div>
                     
                     {renderOutputOrError()}

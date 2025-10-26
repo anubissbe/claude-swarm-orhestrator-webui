@@ -1,51 +1,76 @@
 
-import React, { useState, useCallback } from 'react';
-import ConfigPanel from './components/ConfigPanel';
+import React, { useState, useCallback, useRef, useEffect } from 'react';
+import ProjectManagerChat from './components/ProjectManagerChat';
 import ResultsDisplay from './components/ResultsDisplay';
-import { generateSingleResponse, analyzeAndImprovePrompt } from './services/geminiService';
-import { ResponseItem, ResponseStatus, AnalysisResult } from './types';
+import { generateSingleResponse, createProjectManagerChat, askProjectManager, generateExecutiveSummary } from './services/geminiService';
+import { ResponseItem, ResponseStatus, AnalysisResult, ChatMessage } from './types';
+import type { Chat } from '@google/genai';
+
 
 function App() {
-  const [prompt, setPrompt] = useState<string>('');
   const [swarmSize, setSwarmSize] = useState<number>(10);
   const [model, setModel] = useState<string>('gemini-2.5-flash');
   const [responses, setResponses] = useState<ResponseItem[]>([]);
   const [isSwarming, setIsSwarming] = useState<boolean>(false);
   
-  // State for analysis
+  // State for analysis and chat
+  const chatSessionRef = useRef<Chat | null>(null);
+  const [chatHistory, setChatHistory] = useState<ChatMessage[]>([
+    {
+      role: 'model',
+      content: 'Welcome! I am your AI Project Manager. Please describe the high-level goal of the project you want to build.'
+    }
+  ]);
+  const [isModelThinking, setIsModelThinking] = useState<boolean>(false);
   const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
-  const [isAnalyzing, setIsAnalyzing] = useState<boolean>(false);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [swarmError, setSwarmError] = useState<string | null>(null);
+  const [swarmJustCompleted, setSwarmJustCompleted] = useState<boolean>(false);
 
   const handleReset = useCallback(() => {
-    setPrompt('');
     setAnalysisResult(null);
     setAnalysisError(null);
     setSwarmError(null);
     setResponses([]);
-    setIsAnalyzing(false);
     setIsSwarming(false);
+    chatSessionRef.current = null;
+    setChatHistory([
+      {
+        role: 'model',
+        content: 'Welcome! I am your AI Project Manager. Please describe the high-level goal of the project you want to build.'
+      }
+    ]);
+    setIsModelThinking(false);
+    setSwarmJustCompleted(false);
   }, []);
 
-  const handleAnalyzePrompt = useCallback(async () => {
-    if (!prompt || isAnalyzing || isSwarming) return;
+  const handleSendMessage = useCallback(async (message: string) => {
+    if (!message || isModelThinking || isSwarming) return;
 
-    setIsAnalyzing(true);
-    setAnalysisResult(null);
+    setChatHistory(prev => [...prev, { role: 'user', content: message }]);
+    setIsModelThinking(true);
     setAnalysisError(null);
     setSwarmError(null);
     setResponses([]);
 
     try {
-      const result = await analyzeAndImprovePrompt(prompt);
+      if (!chatSessionRef.current) {
+        chatSessionRef.current = createProjectManagerChat();
+      }
+      
+      const result = await askProjectManager(chatSessionRef.current, message);
       setAnalysisResult(result);
+      setChatHistory(prev => [...prev, { role: 'model', content: result }]);
+
     } catch (error: any) {
-      setAnalysisError(error.message || 'An unknown error occurred during prompt analysis. Check the console for more details.');
+      const errorMessage = error.message || 'An unknown error occurred during analysis. Check the console.';
+      setAnalysisError(errorMessage);
+      setChatHistory(prev => [...prev, { role: 'model', content: `Analysis Failed: ${errorMessage}` }]);
     } finally {
-      setIsAnalyzing(false);
+      setIsModelThinking(false);
     }
-  }, [prompt, isAnalyzing, isSwarming]);
+  }, [isModelThinking, isSwarming]);
+
 
   const handleLaunchSwarm = useCallback(async () => {
     if (!analysisResult || isSwarming) return;
@@ -56,11 +81,21 @@ function App() {
       id: i,
       status: ResponseStatus.PENDING,
       content: '', // Initialize with empty string for streaming
+      activeTool: null,
     }));
     setResponses(initialResponses);
 
     const processStream = async (responseItem: ResponseItem) => {
+      let activeTool: string | null = null;
       try {
+        // Simulate tool activation
+        const agentDef = analysisResult.agents[responseItem.id % analysisResult.agents.length];
+        const agentTools = agentDef.tools || [];
+        if (agentTools.length > 0) {
+            activeTool = agentTools[Math.floor(Math.random() * agentTools.length)];
+            setResponses(prev => prev.map(r => r.id === responseItem.id ? { ...r, activeTool } : r));
+        }
+
         const stream = generateSingleResponse(analysisResult.improvedPrompt, model);
         for await (const chunk of stream) {
           setResponses(prev =>
@@ -74,7 +109,7 @@ function App() {
         setResponses(prev =>
           prev.map(r =>
             r.id === responseItem.id
-              ? { ...r, status: ResponseStatus.SUCCESS }
+              ? { ...r, status: ResponseStatus.SUCCESS, activeTool: null, toolUsed: activeTool ?? undefined }
               : r
           )
         );
@@ -82,7 +117,7 @@ function App() {
         setResponses(prev =>
           prev.map(r =>
             r.id === responseItem.id
-              ? { ...r, status: ResponseStatus.ERROR, error: error.stack || error.message || 'An unknown stream error occurred' }
+              ? { ...r, status: ResponseStatus.ERROR, error: error.stack || error.message || 'An unknown stream error occurred', activeTool: null, toolUsed: activeTool ?? undefined }
               : r
           )
         );
@@ -96,10 +131,36 @@ function App() {
       setSwarmError(error.message || 'An unexpected error occurred while launching the swarm. Please try again.');
     } finally {
       setIsSwarming(false);
+      setSwarmJustCompleted(true);
     }
   }, [analysisResult, swarmSize, model, isSwarming]);
 
-  const isLoading = isAnalyzing || isSwarming;
+  useEffect(() => {
+    if (!swarmJustCompleted) return;
+
+    const generateSummary = async () => {
+        setSwarmJustCompleted(false); // Consume the event
+        setIsModelThinking(true);
+        setChatHistory(prev => [...prev, { role: 'model', content: "Swarm mission complete. Compiling executive summary..." }]);
+        
+        try {
+            if (!analysisResult) throw new Error("Mission analysis not found.");
+            const summary = await generateExecutiveSummary(analysisResult, responses);
+            setChatHistory(prev => [...prev, { role: 'model', content: summary }]);
+        } catch (error: any) {
+            const errorMessage = error.message || 'Failed to generate summary.';
+            setChatHistory(prev => [...prev, { role: 'model', content: `Summary Failed: ${errorMessage}` }]);
+            setAnalysisError(errorMessage); // Reuse analysis error display
+        } finally {
+            setIsModelThinking(false);
+        }
+    };
+
+    generateSummary();
+  }, [swarmJustCompleted, analysisResult, responses]);
+
+
+  const isLoading = isModelThinking || isSwarming;
 
   return (
     <div className="min-h-screen text-slate-300 flex flex-col">
@@ -109,19 +170,18 @@ function App() {
         </h1>
       </header>
       <main className="flex flex-1 overflow-hidden">
-        <ConfigPanel
-          prompt={prompt}
-          setPrompt={setPrompt}
+        <ProjectManagerChat
+          chatHistory={chatHistory}
+          onSendMessage={handleSendMessage}
           swarmSize={swarmSize}
           setSwarmSize={setSwarmSize}
           model={model}
           setModel={setModel}
           isLoading={isLoading}
-          isAnalyzing={isAnalyzing}
+          isModelThinking={isModelThinking}
           isSwarming={isSwarming}
           analysisResult={analysisResult}
           analysisError={analysisError}
-          onAnalyze={handleAnalyzePrompt}
           onLaunch={handleLaunchSwarm}
           onReset={handleReset}
           onDismissAnalysisError={() => setAnalysisError(null)}

@@ -1,14 +1,12 @@
 
-import React, { useState, useRef, useEffect } from 'react';
-import { RocketIcon, ResetIcon } from './Icons';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { RocketIcon, ResetIcon, MagicWandIcon } from './Icons';
 import ErrorAlert from './ErrorAlert';
 import type { AnalysisResult, ChatMessage, ExecutiveSummary, Priority } from '../types';
 
 interface ProjectManagerChatProps {
   chatHistory: ChatMessage[];
   onSendMessage: (message: string) => void;
-  swarmSize: number;
-  setSwarmSize: (size: number) => void;
   model: string;
   setModel: (model: string) => void;
   isLoading: boolean;
@@ -50,7 +48,50 @@ const getPriorityClass = (priority: Priority) => {
     }
 }
 
-const AnalysisResultView: React.FC<{ result: AnalysisResult }> = ({ result }) => {
+const AgentItem: React.FC<{
+    agent: AnalysisResult['agents'][0];
+    index: number;
+    onPriorityChange: (agentIndex: number, newPriority: Priority) => void;
+}> = ({ agent, index, onPriorityChange }) => {
+    const [showReasoning, setShowReasoning] = useState(false);
+    return (
+        <li className="p-2 bg-slate-800/70 rounded">
+            <div className="flex justify-between items-center">
+                <strong className="text-slate-200 font-mono text-xs">{agent.name}</strong>
+                <select
+                    value={agent.priority}
+                    onChange={(e) => onPriorityChange(index, e.target.value as Priority)}
+                    className={`px-2 py-0.5 text-xs font-bold rounded-full border ${getPriorityClass(agent.priority)} appearance-none text-center cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-cyan-400 transition-all`}
+                    aria-label={`Priority for ${agent.name}`}
+                >
+                    <option className="bg-slate-700 text-white" value="High">High</option>
+                    <option className="bg-slate-700 text-white" value="Medium">Medium</option>
+                    <option className="bg-slate-700 text-white" value="Low">Low</option>
+                </select>
+            </div>
+            <p className="text-slate-400 text-xs mt-1">{agent.description}</p>
+            <div className="text-xs mt-1">
+                <button 
+                    onClick={() => setShowReasoning(!showReasoning)}
+                    className="text-slate-500 hover:text-slate-300 transition-colors font-semibold"
+                >
+                    Why this priority? <span className="inline-block transition-transform">{showReasoning ? '▲' : '▼'}</span>
+                </button>
+                {showReasoning && (
+                    <p className="text-slate-500 italic border-l-2 border-slate-600 pl-2 mt-1 animate-fade-in">
+                        "{agent.priorityReasoning}"
+                    </p>
+                )}
+            </div>
+        </li>
+    );
+};
+
+
+const AnalysisResultView: React.FC<{ 
+    result: AnalysisResult;
+    onPriorityChange: (agentIndex: number, newPriority: Priority) => void;
+}> = ({ result, onPriorityChange }) => {
   const [copyButtonText, setCopyButtonText] = useState('Copy Prompt');
 
   const handleCopy = (e: React.MouseEvent) => {
@@ -81,19 +122,10 @@ const AnalysisResultView: React.FC<{ result: AnalysisResult }> = ({ result }) =>
       <p className="mt-2 p-2 bg-slate-800 border border-slate-600 rounded text-slate-300 whitespace-pre-wrap font-mono text-xs">{result.improvedPrompt}</p>
     </details>
     <details className="bg-slate-900/50 p-3 rounded-md border border-slate-600" open>
-      <summary className="font-semibold text-cyan-300 cursor-pointer">AGENT ROSTER</summary>
+      <summary className="font-semibold text-cyan-300 cursor-pointer">AGENT ROSTER ({result.agents.length})</summary>
       <ul className="mt-2 space-y-2">
-        {result.agents.map(agent => (
-          <li key={agent.name} className="p-2 bg-slate-800/70 rounded">
-            <div className="flex justify-between items-center">
-                <strong className="text-slate-200 font-mono text-xs">{agent.name}</strong>
-                <span className={`px-2 py-0.5 text-xs font-bold rounded-full border ${getPriorityClass(agent.priority)}`}>
-                    {agent.priority}
-                </span>
-            </div>
-            <p className="text-slate-400 text-xs mt-1">{agent.description}</p>
-            <p className="text-slate-500 text-xs mt-1 italic border-l-2 border-slate-600 pl-2">"{agent.priorityReasoning}"</p>
-          </li>
+        {result.agents.map((agent, index) => (
+           <AgentItem key={agent.name} agent={agent} index={index} onPriorityChange={onPriorityChange} />
         ))}
       </ul>
     </details>
@@ -165,8 +197,6 @@ const ExecutiveSummaryView: React.FC<{ summary: ExecutiveSummary }> = ({ summary
 const ProjectManagerChat: React.FC<ProjectManagerChatProps> = ({
   chatHistory,
   onSendMessage,
-  swarmSize,
-  setSwarmSize,
   model,
   setModel,
   isLoading,
@@ -179,6 +209,7 @@ const ProjectManagerChat: React.FC<ProjectManagerChatProps> = ({
   onDismissAnalysisError,
 }) => {
   const [currentMessage, setCurrentMessage] = useState('');
+  const [editableResult, setEditableResult] = useState<AnalysisResult | null>(null);
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -186,6 +217,22 @@ const ProjectManagerChat: React.FC<ProjectManagerChatProps> = ({
       chatContainerRef.current.scrollTop = chatContainerRef.current.scrollHeight;
     }
   }, [chatHistory, isModelThinking]);
+
+  useEffect(() => {
+    setEditableResult(analysisResult ? JSON.parse(JSON.stringify(analysisResult)) : null);
+  }, [analysisResult]);
+
+  const prioritiesHaveChanged = useMemo(() => {
+    if (!analysisResult || !editableResult) return false;
+    if (analysisResult.agents.length !== editableResult.agents.length) return true;
+    for (let i = 0; i < analysisResult.agents.length; i++) {
+        if (analysisResult.agents[i].priority !== editableResult.agents[i].priority) {
+            return true;
+        }
+    }
+    return false;
+  }, [analysisResult, editableResult]);
+
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -195,9 +242,24 @@ const ProjectManagerChat: React.FC<ProjectManagerChatProps> = ({
     }
   };
 
+  const handlePriorityChange = (agentIndex: number, newPriority: Priority) => {
+    if (!editableResult) return;
+    const updatedAgents = [...editableResult.agents];
+    updatedAgents[agentIndex] = { ...updatedAgents[agentIndex], priority: newPriority };
+    setEditableResult({ ...editableResult, agents: updatedAgents });
+  };
+
+  const handleRegeneratePlan = () => {
+    if (!editableResult) return;
+    const message = `I have adjusted the agent priorities. Please review and regenerate the plan, updating descriptions and priority reasoning if necessary based on these new priorities. Here is the updated agent list:\n\n${JSON.stringify(editableResult.agents, null, 2)}`;
+    onSendMessage(message);
+  };
+
   const renderContent = (content: ChatMessage['content']) => {
     if (isAnalysisResult(content)) {
-      return <AnalysisResultView result={content} />;
+      // Use the editable result for rendering if it exists
+      const resultToRender = editableResult || content;
+      return <AnalysisResultView result={resultToRender} onPriorityChange={handlePriorityChange} />;
     }
     if (isExecutiveSummary(content)) {
       return <ExecutiveSummaryView summary={content} />;
@@ -263,17 +325,6 @@ const ProjectManagerChat: React.FC<ProjectManagerChatProps> = ({
         {analysisResult && !isSwarming && !isModelThinking && (
           <div className="border-t border-slate-700 pt-4 space-y-4 animate-fade-in">
             <div>
-              <label htmlFor="swarmSize" className="block text-sm font-medium text-cyan-300 mb-2">
-                SWARM SIZE: <span className="font-bold text-cyan-300 font-mono">{swarmSize} Agents</span>
-              </label>
-              <input
-                id="swarmSize" type="range" min="1" max="50" value={swarmSize}
-                onChange={(e) => setSwarmSize(Number(e.target.value))}
-                className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer"
-                disabled={isLoading}
-              />
-            </div>
-            <div>
               <label htmlFor="model" className="block text-sm font-medium text-cyan-300 mb-2">AGENT MODEL</label>
               <select
                 id="model"
@@ -286,10 +337,21 @@ const ProjectManagerChat: React.FC<ProjectManagerChatProps> = ({
                 <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
               </select>
             </div>
+             {prioritiesHaveChanged && (
+                <button
+                    onClick={handleRegeneratePlan}
+                    disabled={isLoading}
+                    className="w-full flex items-center justify-center px-4 py-2 bg-amber-600 text-white font-bold rounded-md hover:bg-amber-700 disabled:bg-slate-600 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-[0_0_15px_rgba(245,158,11,0.5)]"
+                >
+                    <MagicWandIcon />
+                    Regenerate Plan
+                </button>
+            )}
             <button
               onClick={onLaunch}
-              disabled={isSwarming || !analysisResult}
+              disabled={isSwarming || !analysisResult || prioritiesHaveChanged}
               className="w-full flex items-center justify-center px-4 py-3 bg-cyan-600 text-white font-bold rounded-md hover:bg-cyan-700 disabled:bg-slate-600 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-[0_0_15px_rgba(34,211,238,0.5)]"
+              title={prioritiesHaveChanged ? "Please regenerate the plan before deploying" : "Deploy the swarm"}
             >
               <RocketIcon />
               {isSwarming ? 'SWARM IN PROGRESS...' : 'DEPLOY SWARM'}

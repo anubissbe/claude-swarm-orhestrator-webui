@@ -62,13 +62,13 @@ export async function* generateSingleResponse(
 const SYSTEM_INSTRUCTION = `You are a senior software architect and project manager for a multi-agent AI swarm. Your role is to engage in a conversation with a user to define and refine a project plan.
 
 **Initial Interaction:**
-When the user provides their first high-level project request, your primary goal is to break it down into a comprehensive plan that the AI swarm can execute. You must respond ONLY with a valid JSON object adhering to this schema: { improvedPrompt: string, agents: Agent[], tools: Tool[] }. For each agent, you MUST specify which tools from the main toolkit it will use by providing a list of tool names in its 'tools' property. Crucially, you must also assess and assign a priority level ('High', 'Medium', or 'Low') to each agent based on its dependencies and impact on the overall project goal. You must provide a specific, brief justification for this priority in the 'priorityReasoning' field. This justification is critical for the user to understand your strategic plan. For example, instead of a generic reason like 'High priority task', provide a concrete explanation like: 'High priority because it establishes the database schema, which all other data-handling agents depend on.' Agents critical for core functionality or that unblock other agents should have a 'High' priority.
+When the user provides their first high-level project request, your primary goal is to break it down into a comprehensive plan that the AI swarm can execute. You must respond ONLY with a valid JSON object adhering to this schema: { improvedPrompt: string, agents: Agent[], tools: Tool[], agentDependencies: AgentDependency[] }. For each agent, you MUST specify which tools from the main toolkit it will use by providing a list of tool names in its 'tools' property. Crucially, you must also assess and assign a priority level ('High', 'Medium', or 'Low') to each agent based on its dependencies and impact on the overall project goal. You must provide a specific, brief justification for this priority in the 'priorityReasoning' field. Agents critical for core functionality or that unblock other agents should have a 'High' priority. Also, you MUST determine the dependencies between agents. If Agent A's output is required for Agent B to start, this means A depends on B. List these dependencies in an 'agentDependencies' array, where each object has a 'source' (agent A's name) and a 'target' (agent B's name). If there are no dependencies, provide an empty array.
 
 **Follow-up Interactions:**
 If the user provides feedback, asks for changes, or suggests new features after the initial plan is generated, you must:
 1. Acknowledge their request.
-2. Incorporate their feedback to create a *new, updated* project plan, re-evaluating agent priorities and their reasoning as needed.
-3. Respond again ONLY with the updated valid JSON object adhering to the same schema, including the tool assignments, priority level, and priority reasoning for each agent.
+2. Incorporate their feedback to create a *new, updated* project plan, re-evaluating agent priorities, their reasoning, and dependencies as needed.
+3. Respond again ONLY with the updated valid JSON object adhering to the same schema.
 
 Your final output for any planning-related message MUST be the JSON object. Do not add any conversational text outside of the JSON structure.`;
 
@@ -115,9 +115,21 @@ const ANALYSIS_SCHEMA = {
                 },
                 required: ["name", "description"]
             }
+        },
+        agentDependencies: {
+            type: Type.ARRAY,
+            description: "A list of dependencies between agents. A dependency from 'source' to 'target' means the source agent requires the target agent's output to begin its work.",
+            items: {
+                type: Type.OBJECT,
+                properties: {
+                    source: { type: Type.STRING, description: "The name of the agent that depends on the target." },
+                    target: { type: Type.STRING, description: "The name of the agent being depended upon." }
+                },
+                required: ["source", "target"]
+            }
         }
     },
-    required: ["improvedPrompt", "agents", "tools"]
+    required: ["improvedPrompt", "agents", "tools", "agentDependencies"]
 };
 
 

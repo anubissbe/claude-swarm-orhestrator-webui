@@ -1,4 +1,5 @@
-import React, { useState, useRef, useLayoutEffect } from 'react';
+
+import React, { useState, useRef, useLayoutEffect, useMemo } from 'react';
 import { ResponseItem, ResponseStatus, AnalysisResult, Tool, Priority } from '../types';
 import ErrorAlert from './ErrorAlert';
 import AgentDetailModal from './AgentDetailModal';
@@ -11,6 +12,7 @@ interface ResultsDisplayProps {
     onDismissSwarmError: () => void;
     analysisResult: AnalysisResult | null;
     onRetry: (agentId: number) => void;
+    executionPhase: string | null;
 }
 
 const CircularProgressBar: React.FC<{ progress: number; completed: number; total: number }> = ({ progress, completed, total }) => {
@@ -196,7 +198,8 @@ const SwarmNetworkGraph: React.FC<{
     responses: ResponseItem[];
     onNodeClick: (id: number) => void;
     analysisResult: AnalysisResult;
-}> = ({ responses, onNodeClick, analysisResult }) => {
+    selectedAgentId: number | null;
+}> = ({ responses, onNodeClick, analysisResult, selectedAgentId }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
     const [transform, setTransform] = useState({ x: 0, y: 0, k: 1 }); // Pan (x, y) and zoom (k)
@@ -218,17 +221,15 @@ const SwarmNetworkGraph: React.FC<{
     const centerX = dimensions.width / 2;
     const centerY = dimensions.height / 2;
     
-    // Refined scaling logic: more gradual decrease over a wider range of agent counts.
-    // Minimum scale reduced to 0.5 to better accommodate very large swarms.
     const nodeScale = Math.max(0.5, Math.min(1, 1 - (numAgents - 15) / 80));
 
     const nodePositions = calculateNodePositions(numAgents, dimensions.width, dimensions.height, nodeScale);
 
-    const nodes = responses.map((response, i) => ({
+    const nodes = useMemo(() => responses.map((response, i) => ({
         ...response,
         x: nodePositions[i]?.x ?? centerX,
         y: nodePositions[i]?.y ?? centerY,
-    }));
+    })), [responses, nodePositions, centerX, centerY]);
     
     const toolPositions = calculateToolPositions(analysisResult.tools.length, dimensions.width, dimensions.height, nodePositions);
 
@@ -260,6 +261,78 @@ const SwarmNetworkGraph: React.FC<{
         })
         .filter((edge): edge is { key: string; x1: number; y1: number; x2: number; y2: number; } => edge !== null);
 
+    // --- Dependency and Highlighting Logic ---
+    const agentNameToNodeMap = useMemo(() => {
+        const map: Record<string, any> = {};
+        if (!analysisResult) return map;
+        nodes.forEach(node => {
+            const agent = analysisResult.agents[node.id % analysisResult.agents.length];
+            if (agent && !map[agent.name]) {
+                map[agent.name] = node;
+            }
+        });
+        return map;
+    }, [nodes, analysisResult]);
+
+    const dependencyEdges = useMemo(() => {
+        const edges: Array<{key: string; x1: number; y1: number; x2: number; y2: number; sourceName: string; targetName: string}> = [];
+        if (!analysisResult?.agentDependencies) return edges;
+
+        analysisResult.agentDependencies.forEach((dep, i) => {
+            const sourceNode = agentNameToNodeMap[dep.source];
+            const targetNode = agentNameToNodeMap[dep.target];
+            if (sourceNode && targetNode) {
+                edges.push({
+                    key: `dep-edge-${i}`,
+                    x1: sourceNode.x,
+                    y1: sourceNode.y,
+                    x2: targetNode.x,
+                    y2: targetNode.y,
+                    sourceName: dep.source,
+                    targetName: dep.target
+                });
+            }
+        });
+        return edges;
+    }, [analysisResult, agentNameToNodeMap]);
+
+    const { highlightedNodeIds, highlightedDepEdgeKeys } = useMemo(() => {
+        const hNodeIds = new Set<number>();
+        const hEdgeKeys = new Set<string>();
+        const relatedAgentNames = new Set<string>();
+
+        if (selectedAgentId === null || !analysisResult) {
+            return { highlightedNodeIds: hNodeIds, highlightedDepEdgeKeys: hEdgeKeys };
+        }
+
+        const selectedAgentIndex = selectedAgentId % analysisResult.agents.length;
+        const selectedAgent = analysisResult.agents[selectedAgentIndex];
+
+        if (!selectedAgent) return { highlightedNodeIds: hNodeIds, highlightedDepEdgeKeys: hEdgeKeys };
+
+        relatedAgentNames.add(selectedAgent.name);
+
+        (analysisResult.agentDependencies || []).forEach(dep => {
+            if (dep.source === selectedAgent.name) relatedAgentNames.add(dep.target);
+            if (dep.target === selectedAgent.name) relatedAgentNames.add(dep.source);
+        });
+
+        nodes.forEach(node => {
+            const agent = analysisResult.agents[node.id % analysisResult.agents.length];
+            if (agent && relatedAgentNames.has(agent.name)) {
+                hNodeIds.add(node.id);
+            }
+        });
+        
+        dependencyEdges.forEach(edge => {
+            if (relatedAgentNames.has(edge.sourceName) && relatedAgentNames.has(edge.targetName)) {
+               hEdgeKeys.add(edge.key);
+            }
+        });
+
+        return { highlightedNodeIds: hNodeIds, highlightedDepEdgeKeys: hEdgeKeys };
+    }, [selectedAgentId, analysisResult, nodes, dependencyEdges]);
+
 
     const handleWheel = (e: React.WheelEvent) => {
         e.preventDefault();
@@ -272,7 +345,6 @@ const SwarmNetworkGraph: React.FC<{
             const mouseX = e.clientX - rect.left;
             const mouseY = e.clientY - rect.top;
             
-            // Zoom centered on the mouse pointer
             const x = mouseX - (mouseX - transform.x) * (k / transform.k);
             const y = mouseY - (mouseY - transform.y) * (k / transform.k);
             
@@ -304,7 +376,6 @@ const SwarmNetworkGraph: React.FC<{
         const newK = direction === 'in' ? transform.k * zoomFactor : transform.k / zoomFactor;
         const k = Math.max(0.2, Math.min(3, newK));
 
-        // Zoom centered on the view center
         const x = centerX - (centerX - transform.x) * (k / transform.k);
         const y = centerY - (centerY - transform.y) * (k / transform.k);
 
@@ -312,6 +383,8 @@ const SwarmNetworkGraph: React.FC<{
     };
 
     const resetView = () => setTransform({ x: 0, y: 0, k: 1 });
+
+    const isHighlighting = selectedAgentId !== null;
 
     return (
         <div ref={containerRef} className="w-full h-full relative overflow-hidden bg-transparent" style={{ cursor: 'grab' }}>
@@ -326,6 +399,17 @@ const SwarmNetworkGraph: React.FC<{
             >
                 {/* Edges */}
                 <svg className="absolute top-0 left-0" style={{ width: dimensions.width, height: dimensions.height, overflow: 'visible' }}>
+                     {/* Dependency Edges (rendered first) */}
+                    {dependencyEdges.map(edge => (
+                        <line
+                            key={edge.key}
+                            x1={edge.x1}
+                            y1={edge.y1}
+                            x2={edge.x2}
+                            y2={edge.y2}
+                            className={`graph-edge dependency ${isHighlighting ? (highlightedDepEdgeKeys.has(edge.key) ? 'highlighted' : 'dimmed') : ''}`}
+                        />
+                    ))}
                     {/* Edges from Center to Agents */}
                     {nodes.map(node => (
                          <line 
@@ -334,7 +418,7 @@ const SwarmNetworkGraph: React.FC<{
                             y1={centerY} 
                             x2={node.x} 
                             y2={node.y} 
-                            className={`graph-edge ${getStatusClass(node.status)}`}
+                            className={`graph-edge ${getStatusClass(node.status)} ${isHighlighting ? (highlightedNodeIds.has(node.id) ? 'highlighted' : 'dimmed') : ''}`}
                         />
                     ))}
                     {/* Edges from Agents to Tools */}
@@ -363,11 +447,20 @@ const SwarmNetworkGraph: React.FC<{
                 {nodes.map((node, i) => {
                      const agent = analysisResult.agents[node.id % analysisResult.agents.length];
                      const statusDisplay = getAgentStatusDisplay(node.status);
+                     const isSelected = selectedAgentId === node.id;
+                     const isHighlighted = highlightedNodeIds.has(node.id);
+                     
                      return (
                         <button
                             key={`node-${node.id}`}
                             onClick={(e) => { e.stopPropagation(); onNodeClick(node.id); }}
-                            className={`graph-agent-node ${getStatusClass(node.status)} ${node.activeTool ? 'tool-active' : ''} ${getPriorityClass(agent?.priority)}`}
+                            className={`graph-agent-node 
+                                ${getStatusClass(node.status)} 
+                                ${node.activeTool ? 'tool-active' : ''} 
+                                ${getPriorityClass(agent?.priority)}
+                                ${isHighlighting ? (isHighlighted ? 'highlighted' : 'dimmed') : ''}
+                                ${isSelected ? 'selected' : ''}
+                            `}
                             style={{
                                 top: node.y,
                                 left: node.x,
@@ -438,7 +531,7 @@ const FilterButton: React.FC<{
 );
 
 
-const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ responses, isLoading, swarmError, onDismissSwarmError, analysisResult, onRetry }) => {
+const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ responses, isLoading, swarmError, onDismissSwarmError, analysisResult, onRetry, executionPhase }) => {
     const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
     const [statusFilter, setStatusFilter] = useState<ResponseStatus | 'all'>('all');
     const [priorityFilter, setPriorityFilter] = useState<Priority | 'all'>('all');
@@ -513,6 +606,9 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ responses, isLoading, s
               <>
                 <div className="flex-shrink-0 flex flex-col items-center justify-center mb-4">
                     <CircularProgressBar progress={progress} completed={completedCount} total={responses.length} />
+                    {executionPhase && (
+                        <p className="mt-3 text-cyan-300 font-mono tracking-wider animate-pulse">{executionPhase}</p>
+                    )}
                 </div>
 
                 <div className="flex-shrink-0 p-2 mb-4 bg-slate-900/50 border border-slate-700/50 rounded-lg flex flex-col items-center justify-center gap-y-3">
@@ -558,6 +654,7 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ responses, isLoading, s
                             responses={filteredResponses}
                             onNodeClick={setSelectedAgentId}
                             analysisResult={analysisResult}
+                            selectedAgentId={selectedAgentId}
                         />
                    ) : (
                         <div className="flex flex-col items-center justify-center h-full text-slate-500 animate-fade-in">

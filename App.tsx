@@ -8,7 +8,6 @@ import type { Chat } from '@google/genai';
 
 
 function App() {
-  const [swarmSize, setSwarmSize] = useState<number>(10);
   const [model, setModel] = useState<string>('gemini-2.5-flash');
   const [responses, setResponses] = useState<ResponseItem[]>([]);
   const [isSwarming, setIsSwarming] = useState<boolean>(false);
@@ -26,6 +25,7 @@ function App() {
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [swarmError, setSwarmError] = useState<string | null>(null);
   const [swarmJustCompleted, setSwarmJustCompleted] = useState<boolean>(false);
+  const [executionPhase, setExecutionPhase] = useState<string | null>(null);
 
   const handleReset = useCallback(() => {
     setAnalysisResult(null);
@@ -42,6 +42,7 @@ function App() {
     ]);
     setIsModelThinking(false);
     setSwarmJustCompleted(false);
+    setExecutionPhase(null);
   }, []);
 
   const handleSendMessage = useCallback(async (message: string) => {
@@ -74,17 +75,27 @@ function App() {
 
   const processStream = useCallback(async (responseItem: ResponseItem) => {
     if (!analysisResult) return;
+
+    // Direct mapping of responseItem.id to agent index
+    const agentDef = analysisResult.agents[responseItem.id];
+    if (!agentDef) {
+        setResponses(prev => prev.map(r => r.id === responseItem.id ? { ...r, status: ResponseStatus.ERROR, error: `Agent definition for ID ${responseItem.id} not found.` } : r));
+        return;
+    }
+    
+    // Create a specific prompt for this agent
+    const agentSpecificPrompt = `**Overall Mission:**\n${analysisResult.improvedPrompt}\n\n---\n\n**Your Role (${agentDef.name}):**\n${agentDef.description}\n\n**Your Priority:** ${agentDef.priority} (${agentDef.priorityReasoning})\n\n**Tools available to you:**\n${agentDef.tools && agentDef.tools.length > 0 ? agentDef.tools.join(', ') : 'None'}\n\n---\n\nNow, please execute your task based on your role and the overall mission. Provide your output below.`;
+
     let activeTool: string | null = null;
     try {
       // Simulate tool activation
-      const agentDef = analysisResult.agents[responseItem.id % analysisResult.agents.length];
       const agentTools = agentDef.tools || [];
       if (agentTools.length > 0) {
           activeTool = agentTools[Math.floor(Math.random() * agentTools.length)];
           setResponses(prev => prev.map(r => r.id === responseItem.id ? { ...r, activeTool } : r));
       }
 
-      const stream = generateSingleResponse(analysisResult.improvedPrompt, model);
+      const stream = generateSingleResponse(agentSpecificPrompt, model);
       for await (const chunk of stream) {
         setResponses(prev =>
           prev.map(r =>
@@ -118,6 +129,7 @@ function App() {
 
     setIsSwarming(true);
     setSwarmError(null);
+    const swarmSize = analysisResult.agents.length;
     const initialResponses: ResponseItem[] = Array.from({ length: swarmSize }, (_, i) => ({
       id: i,
       status: ResponseStatus.PENDING,
@@ -127,15 +139,41 @@ function App() {
     setResponses(initialResponses);
 
     try {
-      const swarmPromises = initialResponses.map(processStream);
-      await Promise.allSettled(swarmPromises);
+        const agentsWithResponses = initialResponses.map(responseItem => ({
+            responseItem,
+            agentDef: analysisResult.agents[responseItem.id]
+        }));
+
+        const highPriority = agentsWithResponses.filter(a => a.agentDef.priority === 'High');
+        const mediumPriority = agentsWithResponses.filter(a => a.agentDef.priority === 'Medium');
+        const lowPriority = agentsWithResponses.filter(a => a.agentDef.priority === 'Low');
+
+        const runBatch = async (batch: typeof agentsWithResponses) => {
+            const promises = batch.map(item => processStream(item.responseItem));
+            await Promise.allSettled(promises);
+        };
+
+        if (highPriority.length > 0) {
+            setExecutionPhase('Executing HIGH priority agents...');
+            await runBatch(highPriority);
+        }
+        if (mediumPriority.length > 0) {
+            setExecutionPhase('Executing MEDIUM priority agents...');
+            await runBatch(mediumPriority);
+        }
+        if (lowPriority.length > 0) {
+            setExecutionPhase('Executing LOW priority agents...');
+            await runBatch(lowPriority);
+        }
+
     } catch (error: any) {
       setSwarmError(error.message || 'An unexpected error occurred while launching the swarm. Please try again.');
     } finally {
       setIsSwarming(false);
       setSwarmJustCompleted(true);
+      setExecutionPhase(null);
     }
-  }, [analysisResult, swarmSize, model, isSwarming, processStream]);
+  }, [analysisResult, isSwarming, processStream]);
 
 
   const handleRetryAgent = useCallback(async (agentId: number) => {
@@ -204,8 +242,6 @@ function App() {
         <ProjectManagerChat
           chatHistory={chatHistory}
           onSendMessage={handleSendMessage}
-          swarmSize={swarmSize}
-          setSwarmSize={setSwarmSize}
           model={model}
           setModel={setModel}
           isLoading={isLoading}
@@ -225,6 +261,7 @@ function App() {
             onDismissSwarmError={() => setSwarmError(null)}
             analysisResult={analysisResult}
             onRetry={handleRetryAgent}
+            executionPhase={executionPhase}
           />
         </div>
       </main>

@@ -30,10 +30,16 @@ export interface Tool {
   description: string;
 }
 
+export interface AgentDependency {
+  source: string; // The agent that depends on the target
+  target: string; // The agent being depended upon
+}
+
 export interface AnalysisResult {
   improvedPrompt: string;
   agents: Agent[];
   tools: Tool[];
+  agentDependencies?: AgentDependency[];
 }
 
 // New types for post-mission summary

@@ -133,9 +133,9 @@ const ANALYSIS_SCHEMA = {
 };
 
 
-export const createProjectManagerChat = (): Chat => {
+export const createProjectManagerChat = (model: string): Chat => {
     return ai.chats.create({
-        model: 'gemini-2.5-pro',
+        model: model,
         config: {
             systemInstruction: SYSTEM_INSTRUCTION,
             responseMimeType: "application/json",

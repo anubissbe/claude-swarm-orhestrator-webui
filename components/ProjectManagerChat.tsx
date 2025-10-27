@@ -1,14 +1,15 @@
-
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { RocketIcon, ResetIcon, MagicWandIcon } from './Icons';
+import { RocketIcon, ResetIcon, MagicWandIcon, PlusIcon } from './Icons';
 import ErrorAlert from './ErrorAlert';
-import type { AnalysisResult, ChatMessage, ExecutiveSummary, Priority } from '../types';
+import type { AnalysisResult, ChatMessage, ExecutiveSummary, Priority, Tool, Agent } from '../types';
 
 interface ProjectManagerChatProps {
   chatHistory: ChatMessage[];
   onSendMessage: (message: string) => void;
   model: string;
   setModel: (model: string) => void;
+  projectManagerModel: string;
+  setProjectManagerModel: (model: string) => void;
   isLoading: boolean;
   isModelThinking: boolean;
   isSwarming: boolean;
@@ -51,16 +52,16 @@ const getPriorityClass = (priority: Priority) => {
 const AgentItem: React.FC<{
     agent: AnalysisResult['agents'][0];
     index: number;
-    onPriorityChange: (agentIndex: number, newPriority: Priority) => void;
-}> = ({ agent, index, onPriorityChange }) => {
+    onAgentChange: (agentIndex: number, field: keyof Agent, value: any) => void;
+}> = ({ agent, index, onAgentChange }) => {
     const [showReasoning, setShowReasoning] = useState(false);
     return (
-        <li className="p-2 bg-slate-800/70 rounded">
+        <li className="p-2 bg-slate-800/70 rounded space-y-2">
             <div className="flex justify-between items-center">
                 <strong className="text-slate-200 font-mono text-xs">{agent.name}</strong>
                 <select
                     value={agent.priority}
-                    onChange={(e) => onPriorityChange(index, e.target.value as Priority)}
+                    onChange={(e) => onAgentChange(index, 'priority', e.target.value as Priority)}
                     className={`px-2 py-0.5 text-xs font-bold rounded-full border ${getPriorityClass(agent.priority)} appearance-none text-center cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-cyan-400 transition-all`}
                     aria-label={`Priority for ${agent.name}`}
                 >
@@ -69,8 +70,14 @@ const AgentItem: React.FC<{
                     <option className="bg-slate-700 text-white" value="Low">Low</option>
                 </select>
             </div>
-            <p className="text-slate-400 text-xs mt-1">{agent.description}</p>
-            <div className="text-xs mt-1">
+             <textarea
+                value={agent.description}
+                onChange={e => onAgentChange(index, 'description', e.target.value)}
+                placeholder="Agent instructions..."
+                rows={2}
+                className="w-full p-1 bg-slate-900/50 border border-slate-700/50 rounded text-slate-400 focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 text-xs resize-y"
+            />
+            <div className="text-xs">
                 <button 
                     onClick={() => setShowReasoning(!showReasoning)}
                     className="text-slate-500 hover:text-slate-300 transition-colors font-semibold"
@@ -90,8 +97,12 @@ const AgentItem: React.FC<{
 
 const AnalysisResultView: React.FC<{ 
     result: AnalysisResult;
-    onPriorityChange: (agentIndex: number, newPriority: Priority) => void;
-}> = ({ result, onPriorityChange }) => {
+    originalResult: AnalysisResult;
+    onAgentChange: (agentIndex: number, field: keyof Agent, value: any) => void;
+    onToolChange: (index: number, field: keyof Tool, value: string) => void;
+    onAddTool: () => void;
+    onRemoveTool: (index: number) => void;
+}> = ({ result, originalResult, onAgentChange, onToolChange, onAddTool, onRemoveTool }) => {
   const [copyButtonText, setCopyButtonText] = useState('Copy Prompt');
 
   const handleCopy = (e: React.MouseEvent) => {
@@ -125,20 +136,57 @@ const AnalysisResultView: React.FC<{
       <summary className="font-semibold text-cyan-300 cursor-pointer">AGENT ROSTER ({result.agents.length})</summary>
       <ul className="mt-2 space-y-2">
         {result.agents.map((agent, index) => (
-           <AgentItem key={agent.name} agent={agent} index={index} onPriorityChange={onPriorityChange} />
+           <AgentItem key={agent.name} agent={agent} index={index} onAgentChange={onAgentChange} />
         ))}
       </ul>
     </details>
-    <details className="bg-slate-900/50 p-3 rounded-md border border-slate-600">
+    <details className="bg-slate-900/50 p-3 rounded-md border border-slate-600" open>
       <summary className="font-semibold text-cyan-300 cursor-pointer">TOOLKIT</summary>
       <ul className="mt-2 space-y-2">
-        {result.tools.map(tool => (
-          <li key={tool.name} className="p-2 bg-slate-800/70 rounded">
-            <strong className="text-slate-200 font-mono text-xs">{tool.name}:</strong>
-            <span className="text-slate-400 ml-2 text-xs">{tool.description}</span>
-          </li>
-        ))}
+        {result.tools.map((tool, index) => {
+            const isNewTool = index >= originalResult.tools.length;
+            return (
+                <li key={index} className="p-3 bg-slate-800/70 rounded relative group space-y-2">
+                    <div className="flex items-center space-x-2">
+                        {isNewTool ? (
+                            <input 
+                                type="text"
+                                value={tool.name}
+                                onChange={e => onToolChange(index, 'name', e.target.value)}
+                                placeholder="New Tool Name"
+                                className="flex-grow p-1 bg-slate-900 border border-slate-600 rounded text-slate-200 focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 text-xs font-mono"
+                            />
+                        ) : (
+                           <strong className="text-slate-200 font-mono text-xs">{tool.name}</strong>
+                        )}
+                         <button 
+                            onClick={() => onRemoveTool(index)} 
+                            className="absolute top-2 right-2 p-1 rounded-full text-slate-500 bg-slate-800/50 hover:bg-slate-700 hover:text-rose-400 transition opacity-0 group-hover:opacity-100"
+                            aria-label="Remove tool"
+                            title="Remove tool"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                            </svg>
+                        </button>
+                    </div>
+                    <textarea
+                        value={tool.description}
+                        onChange={e => onToolChange(index, 'description', e.target.value)}
+                        placeholder="Tool description"
+                        rows={2}
+                        className="w-full p-1 bg-slate-900/50 border border-slate-700/50 rounded text-slate-400 focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 text-xs resize-y"
+                    />
+                </li>
+            )
+        })}
       </ul>
+      <button 
+        onClick={onAddTool}
+        className="mt-3 w-full flex items-center justify-center text-sm p-2 bg-slate-700/50 text-slate-300 hover:bg-slate-700 rounded-md border border-slate-600 border-dashed transition-colors"
+       >
+        <PlusIcon className="mr-2 h-4 w-4"/> Add Tool
+      </button>
     </details>
   </div>
 );
@@ -199,6 +247,8 @@ const ProjectManagerChat: React.FC<ProjectManagerChatProps> = ({
   onSendMessage,
   model,
   setModel,
+  projectManagerModel,
+  setProjectManagerModel,
   isLoading,
   isModelThinking,
   isSwarming,
@@ -222,15 +272,15 @@ const ProjectManagerChat: React.FC<ProjectManagerChatProps> = ({
     setEditableResult(analysisResult ? JSON.parse(JSON.stringify(analysisResult)) : null);
   }, [analysisResult]);
 
-  const prioritiesHaveChanged = useMemo(() => {
+  const agentsHaveChanged = useMemo(() => {
     if (!analysisResult || !editableResult) return false;
-    if (analysisResult.agents.length !== editableResult.agents.length) return true;
-    for (let i = 0; i < analysisResult.agents.length; i++) {
-        if (analysisResult.agents[i].priority !== editableResult.agents[i].priority) {
-            return true;
-        }
-    }
-    return false;
+    // Using stringify is a simple way to deep compare. For very large objects, this could be optimized.
+    return JSON.stringify(analysisResult.agents) !== JSON.stringify(editableResult.agents);
+  }, [analysisResult, editableResult]);
+  
+  const toolsHaveChanged = useMemo(() => {
+    if (!analysisResult || !editableResult) return false;
+    return JSON.stringify(analysisResult.tools) !== JSON.stringify(editableResult.tools);
   }, [analysisResult, editableResult]);
 
 
@@ -242,16 +292,47 @@ const ProjectManagerChat: React.FC<ProjectManagerChatProps> = ({
     }
   };
 
-  const handlePriorityChange = (agentIndex: number, newPriority: Priority) => {
+  const handleAgentChange = (agentIndex: number, field: keyof Agent, value: any) => {
     if (!editableResult) return;
     const updatedAgents = [...editableResult.agents];
-    updatedAgents[agentIndex] = { ...updatedAgents[agentIndex], priority: newPriority };
+    updatedAgents[agentIndex] = { ...updatedAgents[agentIndex], [field]: value };
     setEditableResult({ ...editableResult, agents: updatedAgents });
+  };
+  
+  const handleToolChange = (index: number, field: keyof Tool, value: string) => {
+    if (!editableResult) return;
+    const updatedTools = [...editableResult.tools];
+    updatedTools[index] = { ...updatedTools[index], [field]: value };
+    setEditableResult({ ...editableResult, tools: updatedTools });
+  };
+
+  const handleAddTool = () => {
+    if (!editableResult) return;
+    const newTool = { name: '', description: '' };
+    const updatedTools = [...editableResult.tools, newTool];
+    setEditableResult({ ...editableResult, tools: updatedTools });
+  };
+
+  const handleRemoveTool = (index: number) => {
+    if (!editableResult) return;
+    const updatedTools = editableResult.tools.filter((_, i) => i !== index);
+    setEditableResult({ ...editableResult, tools: updatedTools });
+  };
+
+  const handlePMModelChange = (newModel: string) => {
+    if (chatHistory.length > 1) {
+        if (window.confirm("Changing the Project Manager model will reset the current conversation. Are you sure?")) {
+            onReset();
+            setProjectManagerModel(newModel);
+        }
+    } else {
+        setProjectManagerModel(newModel);
+    }
   };
 
   const handleRegeneratePlan = () => {
     if (!editableResult) return;
-    const message = `I have adjusted the agent priorities. Please review and regenerate the plan, updating descriptions and priority reasoning if necessary based on these new priorities. Here is the updated agent list:\n\n${JSON.stringify(editableResult.agents, null, 2)}`;
+    const message = `I have adjusted the plan. Please review and regenerate the plan, updating agent descriptions, tool assignments, and priority reasoning as necessary based on these updated instructions, priorities, and toolkit. Here is the updated structure:\n\n${JSON.stringify({ agents: editableResult.agents, tools: editableResult.tools }, null, 2)}`;
     onSendMessage(message);
   };
 
@@ -259,13 +340,22 @@ const ProjectManagerChat: React.FC<ProjectManagerChatProps> = ({
     if (isAnalysisResult(content)) {
       // Use the editable result for rendering if it exists
       const resultToRender = editableResult || content;
-      return <AnalysisResultView result={resultToRender} onPriorityChange={handlePriorityChange} />;
+      return <AnalysisResultView 
+        result={resultToRender} 
+        originalResult={content} // The original result from chat history
+        onAgentChange={handleAgentChange} 
+        onToolChange={handleToolChange}
+        onAddTool={handleAddTool}
+        onRemoveTool={handleRemoveTool}
+      />;
     }
     if (isExecutiveSummary(content)) {
       return <ExecutiveSummaryView summary={content} />;
     }
     return <p className="whitespace-pre-wrap">{String(content)}</p>;
   }
+
+  const hasChanges = agentsHaveChanged || toolsHaveChanged;
 
   return (
     <div className="w-full md:w-[450px] bg-slate-950/70 backdrop-blur-sm border-r border-slate-700/50 p-4 flex flex-col h-full">
@@ -275,6 +365,38 @@ const ProjectManagerChat: React.FC<ProjectManagerChatProps> = ({
           <ResetIcon />
         </button>
       </div>
+
+      <details className="my-4 flex-shrink-0" open>
+        <summary className="font-semibold text-cyan-300 cursor-pointer text-sm uppercase tracking-wider">Configuration</summary>
+        <div className="p-4 bg-slate-900/50 rounded-md border border-slate-700/50 mt-2 space-y-4">
+            <div>
+            <label htmlFor="pm_model" className="block text-sm font-medium text-slate-300 mb-2">Project Manager Model</label>
+            <select
+                id="pm_model"
+                className="w-full p-2 bg-slate-800 border border-slate-600 rounded-md text-slate-200 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition text-sm"
+                value={projectManagerModel}
+                onChange={(e) => handlePMModelChange(e.target.value)}
+                disabled={isModelThinking || isSwarming}
+            >
+                <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+                <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+            </select>
+            </div>
+            <div>
+            <label htmlFor="model" className="block text-sm font-medium text-slate-300 mb-2">Agent Model</label>
+            <select
+                id="model"
+                className="w-full p-2 bg-slate-800 border border-slate-600 rounded-md text-slate-200 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition text-sm"
+                value={model}
+                onChange={(e) => setModel(e.target.value)}
+                disabled={isLoading}
+            >
+                <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
+            </select>
+            </div>
+        </div>
+      </details>
 
       <div ref={chatContainerRef} className="flex-grow my-4 overflow-y-auto space-y-4 pr-2">
         {chatHistory.map((msg, index) => (
@@ -324,20 +446,7 @@ const ProjectManagerChat: React.FC<ProjectManagerChatProps> = ({
 
         {analysisResult && !isSwarming && !isModelThinking && (
           <div className="border-t border-slate-700 pt-4 space-y-4 animate-fade-in">
-            <div>
-              <label htmlFor="model" className="block text-sm font-medium text-cyan-300 mb-2">AGENT MODEL</label>
-              <select
-                id="model"
-                className="w-full p-2 bg-slate-800 border border-slate-600 rounded-md text-slate-200 focus:ring-2 focus:ring-cyan-500 focus:border-cyan-500 transition text-sm"
-                value={model}
-                onChange={(e) => setModel(e.target.value)}
-                disabled={isLoading}
-              >
-                <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
-                <option value="gemini-2.5-pro">Gemini 2.5 Pro</option>
-              </select>
-            </div>
-             {prioritiesHaveChanged && (
+             {hasChanges && (
                 <button
                     onClick={handleRegeneratePlan}
                     disabled={isLoading}
@@ -349,9 +458,9 @@ const ProjectManagerChat: React.FC<ProjectManagerChatProps> = ({
             )}
             <button
               onClick={onLaunch}
-              disabled={isSwarming || !analysisResult || prioritiesHaveChanged}
+              disabled={isSwarming || !analysisResult || hasChanges}
               className="w-full flex items-center justify-center px-4 py-3 bg-cyan-600 text-white font-bold rounded-md hover:bg-cyan-700 disabled:bg-slate-600 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-[0_0_15px_rgba(34,211,238,0.5)]"
-              title={prioritiesHaveChanged ? "Please regenerate the plan before deploying" : "Deploy the swarm"}
+              title={hasChanges ? "Please regenerate the plan before deploying" : "Deploy the swarm"}
             >
               <RocketIcon />
               {isSwarming ? 'SWARM IN PROGRESS...' : 'DEPLOY SWARM'}

@@ -9,6 +9,7 @@ import type { Chat } from '@google/genai';
 
 function App() {
   const [model, setModel] = useState<string>('gemini-2.5-flash');
+  const [projectManagerModel, setProjectManagerModel] = useState<string>('gemini-2.5-pro');
   const [responses, setResponses] = useState<ResponseItem[]>([]);
   const [isSwarming, setIsSwarming] = useState<boolean>(false);
   
@@ -56,7 +57,7 @@ function App() {
 
     try {
       if (!chatSessionRef.current) {
-        chatSessionRef.current = createProjectManagerChat();
+        chatSessionRef.current = createProjectManagerChat(projectManagerModel);
       }
       
       const result = await askProjectManager(chatSessionRef.current, message);
@@ -70,7 +71,7 @@ function App() {
     } finally {
       setIsModelThinking(false);
     }
-  }, [isModelThinking, isSwarming]);
+  }, [isModelThinking, isSwarming, projectManagerModel]);
 
 
   const processStream = useCallback(async (responseItem: ResponseItem) => {
@@ -244,6 +245,8 @@ function App() {
           onSendMessage={handleSendMessage}
           model={model}
           setModel={setModel}
+          projectManagerModel={projectManagerModel}
+          setProjectManagerModel={setProjectManagerModel}
           isLoading={isLoading}
           isModelThinking={isModelThinking}
           isSwarming={isSwarming}

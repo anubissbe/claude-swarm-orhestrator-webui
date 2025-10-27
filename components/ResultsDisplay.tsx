@@ -89,6 +89,18 @@ const getAgentStatusIcon = (status: ResponseStatus) => {
     }
 };
 
+const getAgentStatusDisplay = (status: ResponseStatus): { text: string; colorClass: string } => {
+    switch (status) {
+        case ResponseStatus.SUCCESS:
+            return { text: 'Idle', colorClass: 'text-green-400' };
+        case ResponseStatus.ERROR:
+            return { text: 'Error', colorClass: 'text-rose-400' };
+        case ResponseStatus.PENDING:
+        default:
+            return { text: 'Working', colorClass: 'text-cyan-400' };
+    }
+};
+
 // Calculates agent positions in concentric circles for better visualization of large swarms.
 const calculateNodePositions = (numAgents: number, width: number, height: number, nodeScale: number) => {
     if (numAgents === 0 || width === 0) return [];
@@ -350,6 +362,7 @@ const SwarmNetworkGraph: React.FC<{
                 {/* Agent Nodes */}
                 {nodes.map((node, i) => {
                      const agent = analysisResult.agents[node.id % analysisResult.agents.length];
+                     const statusDisplay = getAgentStatusDisplay(node.status);
                      return (
                         <button
                             key={`node-${node.id}`}
@@ -365,7 +378,7 @@ const SwarmNetworkGraph: React.FC<{
                         >
                             {getAgentStatusIcon(node.status)}
                             <span className="text-sm font-bold text-slate-300 truncate mt-1.5">{agent.name}</span>
-                            <span className="text-xs text-slate-500 uppercase">{node.status}</span>
+                            <span className={`text-xs font-bold uppercase ${statusDisplay.colorClass}`}>{statusDisplay.text}</span>
                         </button>
                      );
                 })}

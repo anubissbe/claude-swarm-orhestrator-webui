@@ -50,10 +50,34 @@ const getPriorityClass = (priority: Priority) => {
     }
 }
 
-const AnalysisResultView: React.FC<{ result: AnalysisResult }> = ({ result }) => (
+const AnalysisResultView: React.FC<{ result: AnalysisResult }> = ({ result }) => {
+  const [copyButtonText, setCopyButtonText] = useState('Copy Prompt');
+
+  const handleCopy = (e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    navigator.clipboard.writeText(result.improvedPrompt).then(() => {
+        setCopyButtonText('Copied!');
+        setTimeout(() => setCopyButtonText('Copy Prompt'), 2000);
+    }, () => {
+        setCopyButtonText('Failed!');
+        setTimeout(() => setCopyButtonText('Copy Prompt'), 2000);
+    });
+  };
+
+  return (
   <div className="space-y-3 text-sm animate-fade-in mt-2">
     <details className="bg-slate-900/50 p-3 rounded-md border border-slate-600">
-      <summary className="font-semibold text-cyan-300 cursor-pointer">STRATEGIC BRIEFING</summary>
+      <summary className="font-semibold text-cyan-300 cursor-pointer flex items-center">
+        STRATEGIC BRIEFING
+        <button 
+          onClick={handleCopy}
+          className="ml-auto text-xs bg-slate-700 text-slate-300 hover:bg-slate-600 rounded px-2 py-1 font-sans transition-colors"
+          title="Copy improved prompt"
+        >
+          {copyButtonText}
+        </button>
+      </summary>
       <p className="mt-2 p-2 bg-slate-800 border border-slate-600 rounded text-slate-300 whitespace-pre-wrap font-mono text-xs">{result.improvedPrompt}</p>
     </details>
     <details className="bg-slate-900/50 p-3 rounded-md border border-slate-600" open>
@@ -86,6 +110,7 @@ const AnalysisResultView: React.FC<{ result: AnalysisResult }> = ({ result }) =>
     </details>
   </div>
 );
+}
 
 const getOutcomeClass = (outcome: string) => {
     switch (outcome.toLowerCase()) {

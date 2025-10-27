@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Agent, ResponseItem, ResponseStatus, Tool, Priority } from '../types';
-import { LoadingSpinner, CheckCircleIcon, ExclamationCircleIcon, ResetIcon } from './Icons';
+import { LoadingSpinner, CheckCircleIcon, ExclamationCircleIcon, ResetIcon, ToolIcon } from './Icons';
 
 interface AgentDetailModalProps {
   agent: Agent;
@@ -162,19 +162,35 @@ const AgentDetailModal: React.FC<AgentDetailModalProps> = ({ agent, response, as
                         <h3 className="font-semibold text-slate-300 mb-2">Assigned Toolkit</h3>
                         {assignedTools.length > 0 ? (
                             <ul className="space-y-2">
-                                {assignedTools.map(tool => (
-                                    <li key={tool.name} className="bg-slate-900/50 p-3 rounded-lg border border-slate-700/50">
-                                        <div className="flex justify-between items-center">
-                                            <strong className="text-slate-200 font-mono text-sm">{tool.name}</strong>
-                                            {response.activeTool === tool.name && (
-                                                <span className="text-xs font-bold text-violet-300 bg-violet-900/50 px-2 py-1 rounded-full animate-pulse">
-                                                    IN USE
-                                                </span>
-                                            )}
-                                        </div>
-                                        <p className="text-slate-400 text-sm mt-1">{tool.description}</p>
-                                    </li>
-                                ))}
+                                {assignedTools.map(tool => {
+                                    const isActive = response.activeTool === tool.name;
+                                    const wasUsed = !isActive && (response.status === ResponseStatus.SUCCESS || response.status === ResponseStatus.ERROR) && response.toolUsed === tool.name;
+
+                                    return (
+                                        <li key={tool.name} className="bg-slate-900/50 p-3 rounded-lg border border-slate-700/50 flex items-start space-x-3">
+                                            <div className="flex-shrink-0 pt-1">
+                                                <ToolIcon className="w-5 h-5 text-violet-400" />
+                                            </div>
+                                            <div className="flex-grow">
+                                                <div className="flex justify-between items-center">
+                                                    <strong className="text-slate-200 font-mono text-sm">{tool.name}</strong>
+                                                    {isActive && (
+                                                        <span className="text-xs font-bold text-violet-300 bg-violet-900/50 px-2 py-1 rounded-full animate-pulse">
+                                                            IN USE
+                                                        </span>
+                                                    )}
+                                                    {wasUsed && (
+                                                        <span className="flex items-center text-xs font-bold text-green-300 bg-green-900/50 px-2 py-1 rounded-full">
+                                                            <CheckCircleIcon className="w-4 h-4 mr-1 text-green-400" />
+                                                            USED
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <p className="text-slate-400 text-sm mt-1">{tool.description}</p>
+                                            </div>
+                                        </li>
+                                    );
+                                })}
                             </ul>
                         ) : (
                             <p className="text-slate-500 italic text-sm">No specific tools assigned to this agent.</p>

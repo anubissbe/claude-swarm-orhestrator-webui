@@ -2,7 +2,7 @@ import React, { useState, useRef, useLayoutEffect } from 'react';
 import { ResponseItem, ResponseStatus, AnalysisResult, Tool, Priority } from '../types';
 import ErrorAlert from './ErrorAlert';
 import AgentDetailModal from './AgentDetailModal';
-import { LoadingSpinner, CheckCircleIcon, ExclamationCircleIcon, HexagonIcon, ToolIcon, PlusIcon, MinusIcon, CenterFocusIcon } from './Icons';
+import { LoadingSpinner, CheckCircleIcon, ExclamationCircleIcon, HexagonIcon, ToolIcon, PlusIcon, MinusIcon, CenterFocusIcon, FilterIcon } from './Icons';
 
 interface ResultsDisplayProps {
     responses: ResponseItem[];
@@ -404,9 +404,33 @@ const SwarmNetworkGraph: React.FC<{
     );
 };
 
+const FilterButton: React.FC<{
+    label: string;
+    isActive: boolean;
+    onClick: () => void;
+    colorClass: string;
+    count?: number;
+}> = ({ label, isActive, onClick, colorClass, count }) => (
+    <button
+        onClick={onClick}
+        className={`relative px-3 py-1 text-xs font-bold rounded-full transition-all duration-200 border flex items-center space-x-1.5 ${
+            isActive
+                ? `${colorClass} shadow-lg shadow-black/30`
+                : 'bg-slate-800 border-slate-700 text-slate-300 hover:bg-slate-700 hover:border-slate-600'
+        }`}
+    >
+        <span className="truncate max-w-[120px]">{label}</span>
+        {count !== undefined && <span className={`px-1.5 py-0.5 rounded-full text-xs font-mono ${isActive ? 'bg-white/20' : 'bg-slate-700'}`}>{count}</span>}
+    </button>
+);
+
 
 const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ responses, isLoading, swarmError, onDismissSwarmError, analysisResult, onRetry }) => {
     const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
+    const [statusFilter, setStatusFilter] = useState<ResponseStatus | 'all'>('all');
+    const [priorityFilter, setPriorityFilter] = useState<Priority | 'all'>('all');
+    const [toolFilter, setToolFilter] = useState<string | 'all'>('all');
+
 
     if (responses.length === 0 && !swarmError) {
         let message = "Awaiting Mission Objective";
@@ -425,11 +449,42 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ responses, isLoading, s
     const completedCount = responses.filter(r => r.status !== ResponseStatus.PENDING).length;
     const progress = responses.length > 0 ? (completedCount / responses.length) * 100 : 0;
 
+    const filteredResponses = responses.filter(response => {
+        if (!analysisResult) return true;
+        const agent = analysisResult.agents[response.id % analysisResult.agents.length];
+        if (!agent) return true;
+
+        const statusMatch = statusFilter === 'all' || response.status === statusFilter;
+        const priorityMatch = priorityFilter === 'all' || agent.priority === priorityFilter;
+        const toolMatch = toolFilter === 'all' || (agent.tools && agent.tools.includes(toolFilter));
+
+        return statusMatch && priorityMatch && toolMatch;
+    });
+
     const selectedResponse = responses.find(r => r.id === selectedAgentId);
     const selectedAgent = analysisResult && selectedResponse ? analysisResult.agents[selectedResponse.id % analysisResult.agents.length] : null;
     const assignedToolsForModal = (analysisResult && selectedAgent?.tools) 
         ? analysisResult.tools.filter(tool => selectedAgent.tools!.includes(tool.name)) 
         : [];
+
+    const statusCounts = {
+        all: responses.length,
+        pending: responses.filter(r => r.status === 'pending').length,
+        success: responses.filter(r => r.status === 'success').length,
+        error: responses.filter(r => r.status === 'error').length,
+    };
+
+    const priorityCounts = analysisResult ? {
+        all: analysisResult.agents.length,
+        High: analysisResult.agents.filter(a => a.priority === 'High').length,
+        Medium: analysisResult.agents.filter(a => a.priority === 'Medium').length,
+        Low: analysisResult.agents.filter(a => a.priority === 'Low').length,
+    } : null;
+    
+    const toolCounts = analysisResult ? analysisResult.tools.reduce((acc, tool) => {
+        acc[tool.name] = analysisResult.agents.filter(agent => agent.tools?.includes(tool.name)).length;
+        return acc;
+    }, {} as Record<string, number>) : null;
 
     return (
         <div className="flex-grow p-4 md:p-6 lg:p-8 flex flex-col h-full">
@@ -443,16 +498,61 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ responses, isLoading, s
 
             {responses.length > 0 && analysisResult && (
               <>
-                <div className="flex-shrink-0 flex flex-col items-center justify-center mb-6">
+                <div className="flex-shrink-0 flex flex-col items-center justify-center mb-4">
                     <CircularProgressBar progress={progress} completed={completedCount} total={responses.length} />
                 </div>
 
+                <div className="flex-shrink-0 p-2 mb-4 bg-slate-900/50 border border-slate-700/50 rounded-lg flex flex-col items-center justify-center gap-y-3">
+                    <div className="flex flex-wrap items-center justify-center gap-x-6 gap-y-3">
+                        <div className="flex items-center space-x-2">
+                            <span className="font-bold text-xs uppercase text-slate-400">Status:</span>
+                            <FilterButton label="All" isActive={statusFilter === 'all'} onClick={() => setStatusFilter('all')} colorClass="bg-slate-500 border-slate-400 text-white" count={statusCounts.all} />
+                            <FilterButton label="Pending" isActive={statusFilter === ResponseStatus.PENDING} onClick={() => setStatusFilter(ResponseStatus.PENDING)} colorClass="bg-sky-500 border-sky-400 text-white" count={statusCounts.pending} />
+                            <FilterButton label="Success" isActive={statusFilter === ResponseStatus.SUCCESS} onClick={() => setStatusFilter(ResponseStatus.SUCCESS)} colorClass="bg-green-500 border-green-400 text-white" count={statusCounts.success} />
+                            <FilterButton label="Error" isActive={statusFilter === ResponseStatus.ERROR} onClick={() => setStatusFilter(ResponseStatus.ERROR)} colorClass="bg-rose-500 border-rose-400 text-white" count={statusCounts.error} />
+                        </div>
+                         {priorityCounts && (
+                            <div className="flex items-center space-x-2">
+                                <span className="font-bold text-xs uppercase text-slate-400">Priority:</span>
+                                <FilterButton label="All" isActive={priorityFilter === 'all'} onClick={() => setPriorityFilter('all')} colorClass="bg-slate-500 border-slate-400 text-white" count={priorityCounts.all} />
+                                <FilterButton label="High" isActive={priorityFilter === 'High'} onClick={() => setPriorityFilter('High')} colorClass="bg-rose-500 border-rose-400 text-white" count={priorityCounts.High} />
+                                <FilterButton label="Medium" isActive={priorityFilter === 'Medium'} onClick={() => setPriorityFilter('Medium')} colorClass="bg-amber-500 border-amber-400 text-white" count={priorityCounts.Medium} />
+                                <FilterButton label="Low" isActive={priorityFilter === 'Low'} onClick={() => setPriorityFilter('Low')} colorClass="bg-sky-500 border-sky-400 text-white" count={priorityCounts.Low} />
+                            </div>
+                        )}
+                    </div>
+                     {toolCounts && analysisResult.tools.length > 0 && (
+                        <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-3">
+                            <span className="font-bold text-xs uppercase text-slate-400 mr-4">Tool:</span>
+                            <FilterButton label="All" isActive={toolFilter === 'all'} onClick={() => setToolFilter('all')} colorClass="bg-slate-500 border-slate-400 text-white" count={analysisResult.agents.length} />
+                            {analysisResult.tools.map(tool => (
+                                <FilterButton 
+                                    key={tool.name}
+                                    label={tool.name}
+                                    isActive={toolFilter === tool.name}
+                                    onClick={() => setToolFilter(tool.name)}
+                                    colorClass="bg-violet-500 border-violet-400 text-white"
+                                    count={toolCounts[tool.name]}
+                                />
+                            ))}
+                        </div>
+                    )}
+                </div>
+
                 <div className="flex-1 min-h-0">
-                   <SwarmNetworkGraph
-                        responses={responses}
-                        onNodeClick={setSelectedAgentId}
-                        analysisResult={analysisResult}
-                   />
+                   {filteredResponses.length > 0 ? (
+                        <SwarmNetworkGraph
+                            responses={filteredResponses}
+                            onNodeClick={setSelectedAgentId}
+                            analysisResult={analysisResult}
+                        />
+                   ) : (
+                        <div className="flex flex-col items-center justify-center h-full text-slate-500 animate-fade-in">
+                            <FilterIcon className="w-16 h-16 text-slate-700 opacity-50" />
+                            <p className="mt-4 text-lg font-mono tracking-widest">No agents match filters</p>
+                            <p className="text-sm text-slate-600">Adjust your status, priority, or tool filters to see more agents.</p>
+                        </div>
+                   )}
                 </div>
               </>
             )}

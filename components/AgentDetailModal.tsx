@@ -83,7 +83,7 @@ const AgentDetailModal: React.FC<AgentDetailModalProps> = ({ agent, response, as
 
         return (
             <div>
-                <h3 className="font-semibold text-slate-300 mb-2">Live Output</h3>
+                <h3 className="font-semibold text-slate-300 mb-2">Full Output</h3>
                 <div className="bg-slate-900/70 border border-slate-700 rounded-md p-3 max-h-80 overflow-y-auto">
                     {response.content ? (
                         <pre className="text-sm text-slate-300 whitespace-pre-wrap font-mono">
@@ -144,6 +144,20 @@ const AgentDetailModal: React.FC<AgentDetailModalProps> = ({ agent, response, as
                         </div>
                     </div>
                     
+                    {response.content && (
+                        <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-700/50 animate-fade-in">
+                            <h3 className="font-semibold text-slate-300 mb-2">Last Output Snippet</h3>
+                            <div className="text-slate-400 text-sm font-mono bg-slate-800/50 p-3 rounded-md">
+                                <p className="block truncate">
+                                    {response.content.trim().split('\n').pop()}
+                                </p>
+                                {response.status === ResponseStatus.PENDING && (
+                                    <p className="text-xs text-cyan-400/80 mt-1">...still receiving output</p>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
                     <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-700/50">
                         <h3 className="font-semibold text-slate-300 mb-2">Agent Description</h3>
                         <p className={`text-slate-400 text-sm ${!agent.description && 'italic'}`}>

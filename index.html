@@ -67,6 +67,14 @@
         from { transform: rotate(0deg); }
         to { transform: rotate(360deg); }
     }
+    @keyframes tool-pulse {
+        0%, 100% { filter: drop-shadow(0 0 10px rgba(167, 139, 250, 0.5)); }
+        50% { filter: drop-shadow(0 0 20px rgba(167, 139, 250, 0.8)); }
+    }
+    @keyframes node-tool-pulse {
+        0%, 100% { box-shadow: 0 0 10px 4px rgba(167, 139, 250, 0.3); }
+        50% { box-shadow: 0 0 20px 8px rgba(167, 139, 250, 0.5); }
+    }
 
     /* Swarm Network Graph */
     .graph-edge {
@@ -118,7 +126,7 @@
     .graph-agent-node.error { border: 2px solid #ef4444; }
     .graph-agent-node.tool-active {
         border-color: #a78bfa; /* violet-400 */
-        box-shadow: 0 0 20px 8px rgba(167, 139, 250, 0.4);
+        animation: node-fly-in 0.8s cubic-bezier(0.25, 1, 0.5, 1) forwards, node-tool-pulse 2s infinite;
     }
 
     .graph-agent-node::before {
@@ -177,7 +185,7 @@
 
     .graph-tool-node.active .background-hex {
         color: #3b0764; /* Dark violet */
-        filter: drop-shadow(0 0 10px rgba(167, 139, 250, 0.5));
+        animation: tool-pulse 2s ease-in-out infinite;
     }
 
     .graph-tool-node.active {

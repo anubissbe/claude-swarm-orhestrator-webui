@@ -1,4 +1,5 @@
 
+
 import { GoogleGenAI, Type } from "@google/genai";
 import type { AnalysisResult, ExecutiveSummary, ResponseItem } from "../types";
 import type { Chat } from "@google/genai";
@@ -59,54 +60,62 @@ export async function* generateSingleResponse(
     }
 };
 
-const SYSTEM_INSTRUCTION = `You are a senior software architect and project manager for a multi-agent AI swarm. Your role is to engage in a conversation with a user to define and refine a project plan.
+const SYSTEM_INSTRUCTION = `You are a senior software architect and project manager for a multi-agent AI system. Your role is to break down a user's high-level project request into a detailed, executable plan.
 
-**Initial Interaction:**
-When the user provides their first high-level project request, your primary goal is to break it down into a comprehensive plan that the AI swarm can execute. You must respond ONLY with a valid JSON object adhering to this schema: { improvedPrompt: string, agents: Agent[], tools: Tool[], agentDependencies: AgentDependency[] }. For each agent, you MUST specify which tools from the main toolkit it will use by providing a list of tool names in its 'tools' property. Crucially, you must also assess and assign a priority level ('High', 'Medium', or 'Low') to each agent based on its dependencies and impact on the overall project goal. You must provide a specific, brief justification for this priority in the 'priorityReasoning' field. Agents critical for core functionality or that unblock other agents should have a 'High' priority. Also, you MUST determine the dependencies between agents. If Agent A's output is required for Agent B to start, this means A depends on B. List these dependencies in an 'agentDependencies' array, where each object has a 'source' (agent A's name) and a 'target' (agent B's name). If there are no dependencies, provide an empty array.
+**Your Goal:**
+When the user provides a request, you must decompose it into a series of small, discrete, and logically ordered tasks. Your response MUST ONLY be a valid JSON object adhering to this schema: { improvedPrompt: string, tasks: Task[], tools: Tool[] }.
+
+**Task Breakdown Rules:**
+1.  **Task ID:** Each task MUST have a unique integer \`id\`, starting from 0.
+2.  **Dependencies:** For each task, you MUST identify its dependencies. The \`dependencies\` field must be an array of \`id\`s of other tasks that must be completed *before* this task can start. If a task has no dependencies, provide an empty array \`[]\`.
+3.  **Simplicity:** Tasks should be simple and focused on a single responsibility.
+4.  **Priority:** Assign a priority ('High', 'Medium', or 'Low') based on its criticality to the project's completion and its position in the dependency chain. Provide a brief justification in \`priorityReasoning\`. Tasks on the critical path should be 'High'.
+5.  **Tools:** Assign the necessary tools for each task from the main \`tools\` list.
 
 **Follow-up Interactions:**
-If the user provides feedback, asks for changes, or suggests new features after the initial plan is generated, you must:
-1. Acknowledge their request.
-2. Incorporate their feedback to create a *new, updated* project plan, re-evaluating agent priorities, their reasoning, and dependencies as needed.
-3. Respond again ONLY with the updated valid JSON object adhering to the same schema.
-
-Your final output for any planning-related message MUST be the JSON object. Do not add any conversational text outside of the JSON structure.`;
+If the user provides feedback or asks for changes, you must regenerate the *entire* task plan, re-evaluating all tasks, dependencies, and priorities. Your response must always be the complete, valid JSON object. Do not add any conversational text outside the JSON structure.`;
 
 const ANALYSIS_SCHEMA = {
     type: Type.OBJECT,
     properties: {
         improvedPrompt: {
             type: Type.STRING,
-            description: "A detailed and improved prompt for the code generation swarm."
+            description: "A detailed and improved prompt for the swarm to execute."
         },
-        agents: {
+        tasks: {
             type: Type.ARRAY,
-            description: "A list of specialized AI agents for the project.",
+            description: "A list of discrete, executable tasks for the project.",
             items: {
                 type: Type.OBJECT,
                 properties: {
-                    name: { type: Type.STRING, description: "The name of the agent (e.g., 'FrontendDeveloper')." },
-                    description: { type: Type.STRING, description: "The agent's role and responsibilities." },
+                    id: { type: Type.INTEGER, description: "A unique integer ID for the task, starting from 0." },
+                    name: { type: Type.STRING, description: "A short, descriptive name for the task (e.g., 'SetupDatabaseSchema')." },
+                    description: { type: Type.STRING, description: "The detailed instructions for the agent assigned to this task." },
                     tools: {
                         type: Type.ARRAY,
-                        description: "A list of tool names this agent will use from the main toolkit.",
+                        description: "A list of tool names this task requires from the main toolkit.",
                         items: { type: Type.STRING }
+                    },
+                    dependencies: {
+                        type: Type.ARRAY,
+                        description: "An array of task IDs that must be completed before this task can start.",
+                        items: { type: Type.INTEGER }
                     },
                     priority: {
                         type: Type.STRING,
-                        description: "The priority of the agent's tasks. Must be one of: 'High', 'Medium', or 'Low'."
+                        description: "The priority of the task. Must be one of: 'High', 'Medium', or 'Low'."
                     },
                     priorityReasoning: {
                         type: Type.STRING,
-                        description: "A specific, concise justification for the assigned priority, explaining its impact or dependencies. Example: 'High priority as it sets up the core database schema needed by other agents.'"
+                        description: "A specific, concise justification for the assigned priority."
                     }
                 },
-                required: ["name", "description", "tools", "priority", "priorityReasoning"]
+                required: ["id", "name", "description", "tools", "dependencies", "priority", "priorityReasoning"]
             }
         },
         tools: {
             type: Type.ARRAY,
-            description: "A list of tools or capabilities needed by the agents.",
+            description: "A list of tools or capabilities needed by the tasks.",
             items: {
                 type: Type.OBJECT,
                 properties: {
@@ -115,21 +124,9 @@ const ANALYSIS_SCHEMA = {
                 },
                 required: ["name", "description"]
             }
-        },
-        agentDependencies: {
-            type: Type.ARRAY,
-            description: "A list of dependencies between agents. A dependency from 'source' to 'target' means the source agent requires the target agent's output to begin its work.",
-            items: {
-                type: Type.OBJECT,
-                properties: {
-                    source: { type: Type.STRING, description: "The name of the agent that depends on the target." },
-                    target: { type: Type.STRING, description: "The name of the agent being depended upon." }
-                },
-                required: ["source", "target"]
-            }
         }
     },
-    required: ["improvedPrompt", "agents", "tools", "agentDependencies"]
+    required: ["improvedPrompt", "tasks", "tools"]
 };
 
 
@@ -186,10 +183,15 @@ export const askProjectManager = async (
 
 
 const SUMMARY_SYSTEM_INSTRUCTION = `You are an AI Project Manager providing a post-mission executive summary.
-Based on the initial mission objective, the final results from the agent swarm, and a summary of tool usage, generate a concise report.
+Based on the initial mission objective, the final results from the task orchestrator, and a summary of tool usage, generate a concise yet comprehensive report.
 The report MUST be a single, valid JSON object following the provided schema.
-Analyze the results and tool usage to determine the overall outcome, summarize what was accomplished, create relevant KPIs, and provide recommendations.
-Be insightful and critical in your analysis. Your recommendations should consider the effectiveness of tool usage.`;
+
+**Your analysis must be insightful and critical:**
+- **Overall Outcome:** Determine this based on the number of successful vs. failed tasks.
+- **Summary:** Briefly narrate what the system attempted to do and what it achieved. Mention any significant failures.
+- **KPIs:** Generate at least 3 relevant KPIs. Examples include: 'Success Rate' (percentage of successful tasks), 'Error Rate', or 'Tool Efficiency' (comment on if tools were used effectively).
+- **Tool Usage:** Your analysis here should go beyond just counts. Comment on whether the right tools were used for the tasks.
+- **Recommendations:** Provide specific, actionable next steps. If the mission failed, suggest what to fix. If it succeeded, suggest potential enhancements or next projects. Your recommendations should directly correlate with the mission's outcome and your analysis.`;
 
 const SUMMARY_SCHEMA = {
     type: Type.OBJECT,
@@ -216,7 +218,7 @@ const SUMMARY_SCHEMA = {
                 type: Type.OBJECT,
                 properties: {
                     name: { type: Type.STRING, description: "Name of the tool used." },
-                    count: { type: Type.INTEGER, description: "Number of times the tool was used by agents." }
+                    count: { type: Type.INTEGER, description: "Number of times the tool was used." }
                 },
                 required: ["name", "count"]
             }
@@ -235,6 +237,7 @@ export const generateExecutiveSummary = async (
 ): Promise<ExecutiveSummary> => {
     const formattedResponses = responses.map(r => ({
         id: r.id,
+        taskName: analysisResult.tasks.find(t => t.id === r.id)?.name || 'Unknown Task',
         status: r.status,
         // Truncate content to keep the prompt manageable
         output_snippet: r.status === 'success' ? r.content?.substring(0, 200) + '...' : undefined,
@@ -252,12 +255,12 @@ export const generateExecutiveSummary = async (
     const prompt = `
     **Mission Objective:** ${analysisResult.improvedPrompt}
     
-    **Agent Roster:** ${analysisResult.agents.map(a => `${a.name} (Priority: ${a.priority})`).join(', ')}
+    **Task Roster:** ${analysisResult.tasks.map(t => `${t.name} (Priority: ${t.priority})`).join(', ')}
 
     **Tool Usage Summary:**
-    ${toolUsage.length > 0 ? JSON.stringify(toolUsage, null, 2) : "No tools were used by the swarm."}
+    ${toolUsage.length > 0 ? JSON.stringify(toolUsage, null, 2) : "No tools were used."}
 
-    **Final Swarm Results:**
+    **Final Task Results:**
     ${JSON.stringify(formattedResponses, null, 2)}
 
     Please generate the executive summary based on these results.
@@ -267,6 +270,7 @@ export const generateExecutiveSummary = async (
     while (true) {
         try {
             const response = await ai.models.generateContent({
+// FIX: Use correct model name for gemini pro.
                 model: 'gemini-2.5-pro',
                 contents: prompt,
                 config: {

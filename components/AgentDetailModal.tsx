@@ -1,17 +1,17 @@
 
 import React from 'react';
-import { Agent, ResponseItem, ResponseStatus, Tool, Priority } from '../types';
+import { Task, ResponseItem, ResponseStatus, Tool, Priority } from '../types';
 import { LoadingSpinner, CheckCircleIcon, ExclamationCircleIcon, ResetIcon, ToolIcon } from './Icons';
 
-interface AgentDetailModalProps {
-  agent: Agent;
+interface TaskDetailModalProps {
+  task: Task;
   response: ResponseItem;
   assignedTools: Tool[];
   onClose: () => void;
-  onRetry: (agentId: number) => void;
+  onRetry: (taskId: number) => void;
 }
 
-const AgentDetailModal: React.FC<AgentDetailModalProps> = ({ agent, response, assignedTools, onClose, onRetry }) => {
+const TaskDetailModal: React.FC<TaskDetailModalProps> = ({ task, response, assignedTools, onClose, onRetry }) => {
     
     const getStatusInfo = () => {
         switch (response.status) {
@@ -106,7 +106,7 @@ const AgentDetailModal: React.FC<AgentDetailModalProps> = ({ agent, response, as
             onClick={onClose}
             role="dialog"
             aria-modal="true"
-            aria-labelledby="agent-detail-title"
+            aria-labelledby="task-detail-title"
         >
             <div 
                 className="bg-slate-800 border border-slate-700 rounded-lg shadow-2xl shadow-cyan-500/10 w-full max-w-2xl max-h-[90vh] flex flex-col animate-scale-in" 
@@ -114,13 +114,13 @@ const AgentDetailModal: React.FC<AgentDetailModalProps> = ({ agent, response, as
             >
                 {/* Header */}
                 <div className="p-4 border-b border-slate-700 flex justify-between items-center flex-shrink-0">
-                    <h2 id="agent-detail-title" className="text-xl font-bold text-white font-mono tracking-wider">{agent.name}</h2>
+                    <h2 id="task-detail-title" className="text-xl font-bold text-white font-mono tracking-wider">{task.name}</h2>
                     <button 
                         onClick={onClose} 
                         className="p-1 rounded-full text-slate-400 hover:bg-slate-700 hover:text-white transition"
                         aria-label="Close modal"
                     >
-                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="http://www.w3.org/2000/svg" stroke="currentColor">
                             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                         </svg>
                     </button>
@@ -138,8 +138,8 @@ const AgentDetailModal: React.FC<AgentDetailModalProps> = ({ agent, response, as
                         </div>
                         <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-700/50">
                             <h3 className="font-semibold text-slate-300 mb-2">Priority Level</h3>
-                            <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-bold border ${getPriorityClass(agent.priority)}`}>
-                                {agent.priority}
+                            <div className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-bold border ${getPriorityClass(task.priority)}`}>
+                                {task.priority}
                             </div>
                         </div>
                     </div>
@@ -159,16 +159,16 @@ const AgentDetailModal: React.FC<AgentDetailModalProps> = ({ agent, response, as
                     )}
 
                     <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-700/50">
-                        <h3 className="font-semibold text-slate-300 mb-2">Agent Description</h3>
-                        <p className={`text-slate-400 text-sm ${!agent.description && 'italic'}`}>
-                            {agent.description || 'No description available.'}
+                        <h3 className="font-semibold text-slate-300 mb-2">Task Description</h3>
+                        <p className={`text-slate-400 text-sm ${!task.description && 'italic'}`}>
+                            {task.description || 'No description available.'}
                         </p>
                     </div>
 
                     <div className="bg-slate-900/50 p-4 rounded-lg border border-slate-700/50">
                         <h3 className="font-semibold text-slate-300 mb-2">Priority Rationale</h3>
                         <p className="text-slate-400 text-sm italic border-l-2 border-cyan-500/50 pl-3">
-                            "{agent.priorityReasoning || 'No reasoning provided.'}"
+                            "{task.priorityReasoning || 'No reasoning provided.'}"
                         </p>
                     </div>
 
@@ -207,7 +207,7 @@ const AgentDetailModal: React.FC<AgentDetailModalProps> = ({ agent, response, as
                                 })}
                             </ul>
                         ) : (
-                            <p className="text-slate-500 italic text-sm">No specific tools assigned to this agent.</p>
+                            <p className="text-slate-500 italic text-sm">No specific tools assigned to this task.</p>
                         )}
                     </div>
                     
@@ -223,7 +223,7 @@ const AgentDetailModal: React.FC<AgentDetailModalProps> = ({ agent, response, as
                             className="flex items-center justify-center px-4 py-2 bg-cyan-600 text-white font-bold rounded-md hover:bg-cyan-700 disabled:bg-slate-600 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105"
                         >
                             <ResetIcon className="h-5 w-5 mr-2" />
-                            Retry Agent
+                            Retry Task
                         </button>
                     )}
                     <button
@@ -238,4 +238,4 @@ const AgentDetailModal: React.FC<AgentDetailModalProps> = ({ agent, response, as
     );
 };
 
-export default AgentDetailModal;
+export default TaskDetailModal;

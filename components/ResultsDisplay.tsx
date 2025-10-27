@@ -1,9 +1,11 @@
 
+
 import React, { useState, useRef, useLayoutEffect, useMemo } from 'react';
-import { ResponseItem, ResponseStatus, AnalysisResult, Tool, Priority } from '../types';
+// FIX: Import the Task type to help with type inference.
+import { ResponseItem, ResponseStatus, AnalysisResult, Tool, Priority, Task } from '../types';
 import ErrorAlert from './ErrorAlert';
-import AgentDetailModal from './AgentDetailModal';
-import { LoadingSpinner, CheckCircleIcon, ExclamationCircleIcon, HexagonIcon, ToolIcon, PlusIcon, MinusIcon, CenterFocusIcon, FilterIcon } from './Icons';
+import TaskDetailModal from './AgentDetailModal';
+import { LoadingSpinner, CheckCircleIcon, ExclamationCircleIcon, HexagonIcon, ToolIcon, PlusIcon, MinusIcon, CenterFocusIcon, FilterIcon, ResetIcon } from './Icons';
 
 interface ResultsDisplayProps {
     responses: ResponseItem[];
@@ -11,7 +13,8 @@ interface ResultsDisplayProps {
     swarmError: string | null;
     onDismissSwarmError: () => void;
     analysisResult: AnalysisResult | null;
-    onRetry: (agentId: number) => void;
+    onRetry: (taskId: number) => void;
+    onRetryAllFailed: () => void;
     executionPhase: string | null;
 }
 
@@ -94,7 +97,7 @@ const getAgentStatusIcon = (status: ResponseStatus) => {
 const getAgentStatusDisplay = (status: ResponseStatus): { text: string; colorClass: string } => {
     switch (status) {
         case ResponseStatus.SUCCESS:
-            return { text: 'Idle', colorClass: 'text-green-400' };
+            return { text: 'Done', colorClass: 'text-green-400' };
         case ResponseStatus.ERROR:
             return { text: 'Error', colorClass: 'text-rose-400' };
         case ResponseStatus.PENDING:
@@ -103,56 +106,55 @@ const getAgentStatusDisplay = (status: ResponseStatus): { text: string; colorCla
     }
 };
 
-// Calculates agent positions in concentric circles for better visualization of large swarms.
-const calculateNodePositions = (numAgents: number, width: number, height: number, nodeScale: number) => {
-    if (numAgents === 0 || width === 0) return [];
+// Calculates task positions in concentric circles for better visualization.
+const calculateNodePositions = (numTasks: number, width: number, height: number, nodeScale: number) => {
+    if (numTasks === 0 || width === 0) return [];
 
     const positions: { x: number; y: number }[] = [];
     const centerX = width / 2;
     const centerY = height / 2;
-    let agentsPlaced = 0;
+    let tasksPlaced = 0;
     let ringIndex = 0;
 
     const baseRadius = Math.min(width, height) * 0.22;
     const ringSpacing = Math.min(width, height) * 0.12;
-    const nodeSize = 100 * nodeScale; // Effective node size after scaling
+    const nodeSize = 100 * nodeScale;
 
-    while (agentsPlaced < numAgents) {
+    while (tasksPlaced < numTasks) {
         const radius = baseRadius + ringIndex * ringSpacing;
         
         if (radius > Math.min(centerX, centerY) - (nodeSize / 2)) {
             break;
         }
 
-        // Increased spacing factor from 1.3 to 1.4 to prevent node overlap on the ring.
-        let maxAgentsInRing = Math.floor((2 * Math.PI * radius) / (nodeSize * 1.4));
+        let maxTasksInRing = Math.floor((2 * Math.PI * radius) / (nodeSize * 1.4));
         
         if (ringIndex === 0) {
-            maxAgentsInRing = Math.min(maxAgentsInRing, 12);
+            maxTasksInRing = Math.min(maxTasksInRing, 12);
         }
 
-        if (maxAgentsInRing < 1) break;
+        if (maxTasksInRing < 1) break;
 
-        const agentsInThisRing = Math.min(numAgents - agentsPlaced, maxAgentsInRing);
-        const angleOffset = (ringIndex % 2 === 0) ? 0 : Math.PI / agentsInThisRing;
+        const tasksInThisRing = Math.min(numTasks - tasksPlaced, maxTasksInRing);
+        const angleOffset = (ringIndex % 2 === 0) ? 0 : Math.PI / tasksInThisRing;
 
-        for (let i = 0; i < agentsInThisRing; i++) {
-            const agentIndex = agentsPlaced + i;
-            const angle = (i / agentsInThisRing) * 2 * Math.PI + angleOffset;
+        for (let i = 0; i < tasksInThisRing; i++) {
+            const taskIndex = tasksPlaced + i;
+            const angle = (i / tasksInThisRing) * 2 * Math.PI + angleOffset;
             
-            positions[agentIndex] = {
+            positions[taskIndex] = {
                 x: centerX + radius * Math.cos(angle - Math.PI / 2),
                 y: centerY + radius * Math.sin(angle - Math.PI / 2),
             };
         }
 
-        agentsPlaced += agentsInThisRing;
+        tasksPlaced += tasksInThisRing;
         ringIndex++;
     }
     
-    if (agentsPlaced < numAgents) {
-         console.warn(`Swarm too large for display. ${numAgents - agentsPlaced} agents are stacked at the center.`);
-        for (let i = agentsPlaced; i < numAgents; i++) {
+    if (tasksPlaced < numTasks) {
+         console.warn(`Too many tasks for display. ${numTasks - tasksPlaced} tasks are stacked at the center.`);
+        for (let i = tasksPlaced; i < numTasks; i++) {
             positions[i] = { x: centerX, y: centerY };
         }
     }
@@ -160,15 +162,15 @@ const calculateNodePositions = (numAgents: number, width: number, height: number
     return positions;
 };
 
-const calculateToolPositions = (numTools: number, width: number, height: number, agentPositions: {x: number, y: number}[]) => {
+const calculateToolPositions = (numTools: number, width: number, height: number, taskPositions: {x: number, y: number}[]) => {
     if (numTools === 0 || width === 0) return [];
     
     const centerX = width / 2;
     const centerY = height / 2;
 
     let maxAgentRadius = 0;
-    if (agentPositions.length > 0) {
-        for (const pos of agentPositions) {
+    if (taskPositions.length > 0) {
+        for (const pos of taskPositions) {
             const dx = pos.x - centerX;
             const dy = pos.y - centerY;
             const distance = Math.sqrt(dx*dx + dy*dy);
@@ -194,12 +196,12 @@ const calculateToolPositions = (numTools: number, width: number, height: number,
 };
 
 
-const SwarmNetworkGraph: React.FC<{
+const TaskNetworkGraph: React.FC<{
     responses: ResponseItem[];
     onNodeClick: (id: number) => void;
     analysisResult: AnalysisResult;
-    selectedAgentId: number | null;
-}> = ({ responses, onNodeClick, analysisResult, selectedAgentId }) => {
+    selectedTaskId: number | null;
+}> = ({ responses, onNodeClick, analysisResult, selectedTaskId }) => {
     const containerRef = useRef<HTMLDivElement>(null);
     const [dimensions, setDimensions] = useState({ width: 0, height: 0 });
     const [transform, setTransform] = useState({ x: 0, y: 0, k: 1 }); // Pan (x, y) and zoom (k)
@@ -217,13 +219,13 @@ const SwarmNetworkGraph: React.FC<{
         }
     }, []);
     
-    const numAgents = responses.length;
+    const numTasks = responses.length;
     const centerX = dimensions.width / 2;
     const centerY = dimensions.height / 2;
     
-    const nodeScale = Math.max(0.5, Math.min(1, 1 - (numAgents - 15) / 80));
+    const nodeScale = Math.max(0.5, Math.min(1, 1 - (numTasks - 15) / 80));
 
-    const nodePositions = calculateNodePositions(numAgents, dimensions.width, dimensions.height, nodeScale);
+    const nodePositions = calculateNodePositions(numTasks, dimensions.width, dimensions.height, nodeScale);
 
     const nodes = useMemo(() => responses.map((response, i) => ({
         ...response,
@@ -261,77 +263,83 @@ const SwarmNetworkGraph: React.FC<{
         })
         .filter((edge): edge is { key: string; x1: number; y1: number; x2: number; y2: number; } => edge !== null);
 
-    // --- Dependency and Highlighting Logic ---
-    const agentNameToNodeMap = useMemo(() => {
-        const map: Record<string, any> = {};
-        if (!analysisResult) return map;
-        nodes.forEach(node => {
-            const agent = analysisResult.agents[node.id % analysisResult.agents.length];
-            if (agent && !map[agent.name]) {
-                map[agent.name] = node;
-            }
-        });
-        return map;
-    }, [nodes, analysisResult]);
+    const taskIdToNodeMap = useMemo(() => new Map(nodes.map(node => [node.id, node])), [nodes]);
 
     const dependencyEdges = useMemo(() => {
-        const edges: Array<{key: string; x1: number; y1: number; x2: number; y2: number; sourceName: string; targetName: string}> = [];
-        if (!analysisResult?.agentDependencies) return edges;
+        const edges: Array<{key: string; x1: number; y1: number; x2: number; y2: number; sourceId: number; targetId: number}> = [];
+        if (!analysisResult) return edges;
 
-        analysisResult.agentDependencies.forEach((dep, i) => {
-            const sourceNode = agentNameToNodeMap[dep.source];
-            const targetNode = agentNameToNodeMap[dep.target];
-            if (sourceNode && targetNode) {
-                edges.push({
-                    key: `dep-edge-${i}`,
-                    x1: sourceNode.x,
-                    y1: sourceNode.y,
-                    x2: targetNode.x,
-                    y2: targetNode.y,
-                    sourceName: dep.source,
-                    targetName: dep.target
+        // FIX: Use for...of loop for robust type inference of 'task'.
+        for (const task of (analysisResult.tasks as Task[])) {
+            if (task.dependencies) {
+                const targetNode = taskIdToNodeMap.get(task.id);
+                task.dependencies.forEach(depId => {
+                    const sourceNode = taskIdToNodeMap.get(depId);
+                    if (sourceNode && targetNode) {
+                         edges.push({
+                            key: `dep-edge-${depId}-to-${task.id}`,
+                            x1: sourceNode.x,
+                            y1: sourceNode.y,
+                            x2: targetNode.x,
+                            y2: targetNode.y,
+                            sourceId: depId,
+                            targetId: task.id
+                        });
+                    }
                 });
             }
-        });
+        }
         return edges;
-    }, [analysisResult, agentNameToNodeMap]);
+    }, [analysisResult, taskIdToNodeMap]);
 
     const { highlightedNodeIds, highlightedDepEdgeKeys } = useMemo(() => {
         const hNodeIds = new Set<number>();
         const hEdgeKeys = new Set<string>();
-        const relatedAgentNames = new Set<string>();
 
-        if (selectedAgentId === null || !analysisResult) {
+        if (selectedTaskId === null || !analysisResult) {
             return { highlightedNodeIds: hNodeIds, highlightedDepEdgeKeys: hEdgeKeys };
         }
 
-        const selectedAgentIndex = selectedAgentId % analysisResult.agents.length;
-        const selectedAgent = analysisResult.agents[selectedAgentIndex];
+        const taskMap = new Map(analysisResult.tasks.map(t => [t.id, t]));
+        const relatedTaskIds = new Set<number>([selectedTaskId]);
 
-        if (!selectedAgent) return { highlightedNodeIds: hNodeIds, highlightedDepEdgeKeys: hEdgeKeys };
-
-        relatedAgentNames.add(selectedAgent.name);
-
-        (analysisResult.agentDependencies || []).forEach(dep => {
-            if (dep.source === selectedAgent.name) relatedAgentNames.add(dep.target);
-            if (dep.target === selectedAgent.name) relatedAgentNames.add(dep.source);
-        });
-
-        nodes.forEach(node => {
-            const agent = analysisResult.agents[node.id % analysisResult.agents.length];
-            if (agent && relatedAgentNames.has(agent.name)) {
-                hNodeIds.add(node.id);
+        // Find dependencies (tasks that must run before)
+        const findDependencies = (taskId: number) => {
+            const task = taskMap.get(taskId);
+            if (task && task.dependencies) {
+                task.dependencies.forEach(depId => {
+                    if (!relatedTaskIds.has(depId)) {
+                        relatedTaskIds.add(depId);
+                        findDependencies(depId);
+                    }
+                });
             }
-        });
+        };
+
+        // Find dependents (tasks that run after)
+        const findDependents = (taskId: number) => {
+            // FIX: Use for...of loop for robust type inference of 'task'.
+            for (const task of (analysisResult.tasks as Task[])) {
+                if (task.dependencies.includes(taskId) && !relatedTaskIds.has(task.id)) {
+                    relatedTaskIds.add(task.id);
+                    findDependents(task.id);
+                }
+            }
+        };
+        
+        findDependencies(selectedTaskId);
+        findDependents(selectedTaskId);
+
+        relatedTaskIds.forEach(id => hNodeIds.add(id));
         
         dependencyEdges.forEach(edge => {
-            if (relatedAgentNames.has(edge.sourceName) && relatedAgentNames.has(edge.targetName)) {
+            if (relatedTaskIds.has(edge.sourceId) && relatedTaskIds.has(edge.targetId)) {
                hEdgeKeys.add(edge.key);
             }
         });
 
         return { highlightedNodeIds: hNodeIds, highlightedDepEdgeKeys: hEdgeKeys };
-    }, [selectedAgentId, analysisResult, nodes, dependencyEdges]);
+    }, [selectedTaskId, analysisResult, dependencyEdges]);
 
 
     const handleWheel = (e: React.WheelEvent) => {
@@ -384,7 +392,7 @@ const SwarmNetworkGraph: React.FC<{
 
     const resetView = () => setTransform({ x: 0, y: 0, k: 1 });
 
-    const isHighlighting = selectedAgentId !== null;
+    const isHighlighting = selectedTaskId !== null;
 
     return (
         <div ref={containerRef} className="w-full h-full relative overflow-hidden bg-transparent" style={{ cursor: 'grab' }}>
@@ -411,16 +419,20 @@ const SwarmNetworkGraph: React.FC<{
                         />
                     ))}
                     {/* Edges from Center to Agents */}
-                    {nodes.map(node => (
-                         <line 
-                            key={`line-mission-${node.id}`} 
-                            x1={centerX} 
-                            y1={centerY} 
-                            x2={node.x} 
-                            y2={node.y} 
-                            className={`graph-edge ${getStatusClass(node.status)} ${isHighlighting ? (highlightedNodeIds.has(node.id) ? 'highlighted' : 'dimmed') : ''}`}
-                        />
-                    ))}
+                    {nodes.map(node => {
+                        const task = analysisResult.tasks.find(t => t.id === node.id);
+                        if (!task || task.dependencies.length > 0) return null; // Only draw from center to root tasks
+                        return (
+                            <line 
+                                key={`line-mission-${node.id}`} 
+                                x1={centerX} 
+                                y1={centerY} 
+                                x2={node.x} 
+                                y2={node.y} 
+                                className={`graph-edge ${getStatusClass(node.status)} ${isHighlighting ? (highlightedNodeIds.has(node.id) ? 'highlighted' : 'dimmed') : ''}`}
+                            />
+                        );
+                    })}
                     {/* Edges from Agents to Tools */}
                     {activeToolEdges.map(edge => (
                         <line
@@ -445,9 +457,10 @@ const SwarmNetworkGraph: React.FC<{
 
                 {/* Agent Nodes */}
                 {nodes.map((node, i) => {
-                     const agent = analysisResult.agents[node.id % analysisResult.agents.length];
+                     const task = analysisResult.tasks.find(t => t.id === node.id);
+                     if (!task) return null;
                      const statusDisplay = getAgentStatusDisplay(node.status);
-                     const isSelected = selectedAgentId === node.id;
+                     const isSelected = selectedTaskId === node.id;
                      const isHighlighted = highlightedNodeIds.has(node.id);
                      
                      return (
@@ -457,7 +470,7 @@ const SwarmNetworkGraph: React.FC<{
                             className={`graph-agent-node 
                                 ${getStatusClass(node.status)} 
                                 ${node.activeTool ? 'tool-active' : ''} 
-                                ${getPriorityClass(agent?.priority)}
+                                ${getPriorityClass(task?.priority)}
                                 ${isHighlighting ? (isHighlighted ? 'highlighted' : 'dimmed') : ''}
                                 ${isSelected ? 'selected' : ''}
                             `}
@@ -467,10 +480,10 @@ const SwarmNetworkGraph: React.FC<{
                                 transform: `scale(${nodeScale})`,
                                 animationDelay: `${i * 50}ms`,
                             }}
-                            aria-label={`View details for agent ${agent.name}`}
+                            aria-label={`View details for task ${task.name}`}
                         >
                             {getAgentStatusIcon(node.status)}
-                            <span className="text-sm font-bold text-slate-300 truncate mt-1.5">{agent.name}</span>
+                            <span className="text-sm font-bold text-slate-300 truncate mt-1.5">{task.name}</span>
                             <span className={`text-xs font-bold uppercase ${statusDisplay.colorClass}`}>{statusDisplay.text}</span>
                         </button>
                      );
@@ -531,23 +544,24 @@ const FilterButton: React.FC<{
 );
 
 
-const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ responses, isLoading, swarmError, onDismissSwarmError, analysisResult, onRetry, executionPhase }) => {
-    const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
+const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ responses, isLoading, swarmError, onDismissSwarmError, analysisResult, onRetry, onRetryAllFailed, executionPhase }) => {
+    const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
     const [statusFilter, setStatusFilter] = useState<ResponseStatus | 'all'>('all');
     const [priorityFilter, setPriorityFilter] = useState<Priority | 'all'>('all');
     const [toolFilter, setToolFilter] = useState<string | 'all'>('all');
 
+    const errorCount = useMemo(() => responses.filter(r => r.status === ResponseStatus.ERROR).length, [responses]);
 
     if (responses.length === 0 && !swarmError) {
         let message = "Awaiting Mission Objective";
         if (isLoading) {
-            message = "Initializing Swarm Protocol...";
+            message = "Initializing...";
         }
         return (
             <div className="flex-grow flex flex-col items-center justify-center text-slate-500 p-8">
                 <HexagonIcon className="w-24 h-24 text-slate-700 opacity-50" />
                 <p className="mt-4 text-lg font-mono tracking-widest">{message}</p>
-                 <p className="text-sm text-slate-600">Provide an objective and initialize the plan to deploy the swarm.</p>
+                 <p className="text-sm text-slate-600">Provide an objective and initialize the plan to begin.</p>
             </div>
         );
     }
@@ -557,38 +571,38 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ responses, isLoading, s
 
     const filteredResponses = responses.filter(response => {
         if (!analysisResult) return true;
-        const agent = analysisResult.agents[response.id % analysisResult.agents.length];
-        if (!agent) return true;
+        const task = analysisResult.tasks.find(t => t.id === response.id);
+        if (!task) return true;
 
         const statusMatch = statusFilter === 'all' || response.status === statusFilter;
-        const priorityMatch = priorityFilter === 'all' || agent.priority === priorityFilter;
-        const toolMatch = toolFilter === 'all' || (agent.tools && agent.tools.includes(toolFilter));
+        const priorityMatch = priorityFilter === 'all' || task.priority === priorityFilter;
+        const toolMatch = toolFilter === 'all' || (task.tools && task.tools.includes(toolFilter));
 
         return statusMatch && priorityMatch && toolMatch;
     });
 
-    const selectedResponse = responses.find(r => r.id === selectedAgentId);
-    const selectedAgent = analysisResult && selectedResponse ? analysisResult.agents[selectedResponse.id % analysisResult.agents.length] : null;
-    const assignedToolsForModal = (analysisResult && selectedAgent?.tools) 
-        ? analysisResult.tools.filter(tool => selectedAgent.tools!.includes(tool.name)) 
+    const selectedResponse = responses.find(r => r.id === selectedTaskId);
+    const selectedTask = analysisResult && selectedResponse ? analysisResult.tasks.find(t => t.id === selectedResponse.id) : null;
+    const assignedToolsForModal = (analysisResult && selectedTask?.tools) 
+        ? analysisResult.tools.filter(tool => selectedTask.tools!.includes(tool.name)) 
         : [];
 
     const statusCounts = {
         all: responses.length,
         pending: responses.filter(r => r.status === 'pending').length,
         success: responses.filter(r => r.status === 'success').length,
-        error: responses.filter(r => r.status === 'error').length,
+        error: errorCount,
     };
 
     const priorityCounts = analysisResult ? {
-        all: analysisResult.agents.length,
-        High: analysisResult.agents.filter(a => a.priority === 'High').length,
-        Medium: analysisResult.agents.filter(a => a.priority === 'Medium').length,
-        Low: analysisResult.agents.filter(a => a.priority === 'Low').length,
+        all: analysisResult.tasks.length,
+        High: analysisResult.tasks.filter(a => a.priority === 'High').length,
+        Medium: analysisResult.tasks.filter(a => a.priority === 'Medium').length,
+        Low: analysisResult.tasks.filter(a => a.priority === 'Low').length,
     } : null;
     
     const toolCounts = analysisResult ? analysisResult.tools.reduce((acc, tool) => {
-        acc[tool.name] = analysisResult.agents.filter(agent => agent.tools?.includes(tool.name)).length;
+        acc[tool.name] = analysisResult.tasks.filter(task => task.tools?.includes(tool.name)).length;
         return acc;
     }, {} as Record<string, number>) : null;
 
@@ -596,7 +610,7 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ responses, isLoading, s
         <div className="flex-grow p-4 md:p-6 lg:p-8 flex flex-col h-full">
             {swarmError && (
                 <ErrorAlert 
-                    title="Swarm Execution Error"
+                    title="Orchestration Error"
                     message={swarmError}
                     onDismiss={onDismissSwarmError}
                 />
@@ -633,7 +647,7 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ responses, isLoading, s
                      {toolCounts && analysisResult.tools.length > 0 && (
                         <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-3">
                             <span className="font-bold text-xs uppercase text-slate-400 mr-4">Tool:</span>
-                            <FilterButton label="All" isActive={toolFilter === 'all'} onClick={() => setToolFilter('all')} colorClass="bg-slate-500 border-slate-400 text-white" count={analysisResult.agents.length} />
+                            <FilterButton label="All" isActive={toolFilter === 'all'} onClick={() => setToolFilter('all')} colorClass="bg-slate-500 border-slate-400 text-white" count={analysisResult.tasks.length} />
                             {analysisResult.tools.map(tool => (
                                 <FilterButton 
                                     key={tool.name}
@@ -646,33 +660,45 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ responses, isLoading, s
                             ))}
                         </div>
                     )}
+                    {errorCount > 0 && !isLoading && (
+                        <div className="w-full border-t border-slate-700/50 mt-3 pt-3 flex justify-center animate-fade-in">
+                            <button
+                                onClick={onRetryAllFailed}
+                                disabled={isLoading}
+                                className="flex items-center justify-center px-4 py-2 bg-rose-600 text-white font-bold rounded-md hover:bg-rose-700 disabled:bg-slate-600 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105"
+                            >
+                                <ResetIcon className="h-5 w-5 mr-2" />
+                                Retry All Failed ({errorCount})
+                            </button>
+                        </div>
+                    )}
                 </div>
 
                 <div className="flex-1 min-h-0">
                    {filteredResponses.length > 0 ? (
-                        <SwarmNetworkGraph
+                        <TaskNetworkGraph
                             responses={filteredResponses}
-                            onNodeClick={setSelectedAgentId}
+                            onNodeClick={setSelectedTaskId}
                             analysisResult={analysisResult}
-                            selectedAgentId={selectedAgentId}
+                            selectedTaskId={selectedTaskId}
                         />
                    ) : (
                         <div className="flex flex-col items-center justify-center h-full text-slate-500 animate-fade-in">
                             <FilterIcon className="w-16 h-16 text-slate-700 opacity-50" />
-                            <p className="mt-4 text-lg font-mono tracking-widest">No agents match filters</p>
-                            <p className="text-sm text-slate-600">Adjust your status, priority, or tool filters to see more agents.</p>
+                            <p className="mt-4 text-lg font-mono tracking-widest">No tasks match filters</p>
+                            <p className="text-sm text-slate-600">Adjust your status, priority, or tool filters to see more tasks.</p>
                         </div>
                    )}
                 </div>
               </>
             )}
 
-            {selectedResponse && selectedAgent && (
-                <AgentDetailModal
-                    agent={selectedAgent}
+            {selectedResponse && selectedTask && (
+                <TaskDetailModal
+                    task={selectedTask}
                     response={selectedResponse}
                     assignedTools={assignedToolsForModal}
-                    onClose={() => setSelectedAgentId(null)}
+                    onClose={() => setSelectedTaskId(null)}
                     onRetry={onRetry}
                 />
             )}

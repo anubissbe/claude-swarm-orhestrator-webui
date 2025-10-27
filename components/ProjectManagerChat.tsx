@@ -1,7 +1,8 @@
+
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { RocketIcon, ResetIcon, MagicWandIcon, PlusIcon } from './Icons';
 import ErrorAlert from './ErrorAlert';
-import type { AnalysisResult, ChatMessage, ExecutiveSummary, Priority, Tool, Agent } from '../types';
+import type { AnalysisResult, ChatMessage, ExecutiveSummary, Priority, Tool, Task } from '../types';
 
 interface ProjectManagerChatProps {
   chatHistory: ChatMessage[];
@@ -22,7 +23,7 @@ interface ProjectManagerChatProps {
 
 // Type Guards
 function isAnalysisResult(item: any): item is AnalysisResult {
-  return item && typeof item === 'object' && 'improvedPrompt' in item && 'agents' in item;
+  return item && typeof item === 'object' && 'improvedPrompt' in item && 'tasks' in item;
 }
 function isExecutiveSummary(item: any): item is ExecutiveSummary {
   return item && typeof item === 'object' && 'overallOutcome' in item && 'kpis' in item;
@@ -49,21 +50,21 @@ const getPriorityClass = (priority: Priority) => {
     }
 }
 
-const AgentItem: React.FC<{
-    agent: AnalysisResult['agents'][0];
+const TaskItem: React.FC<{
+    task: AnalysisResult['tasks'][0];
     index: number;
-    onAgentChange: (agentIndex: number, field: keyof Agent, value: any) => void;
-}> = ({ agent, index, onAgentChange }) => {
+    onTaskChange: (taskIndex: number, field: keyof Task, value: any) => void;
+}> = ({ task, index, onTaskChange }) => {
     const [showReasoning, setShowReasoning] = useState(false);
     return (
         <li className="p-2 bg-slate-800/70 rounded space-y-2">
             <div className="flex justify-between items-center">
-                <strong className="text-slate-200 font-mono text-xs">{agent.name}</strong>
+                <strong className="text-slate-200 font-mono text-xs">{task.name}</strong>
                 <select
-                    value={agent.priority}
-                    onChange={(e) => onAgentChange(index, 'priority', e.target.value as Priority)}
-                    className={`px-2 py-0.5 text-xs font-bold rounded-full border ${getPriorityClass(agent.priority)} appearance-none text-center cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-cyan-400 transition-all`}
-                    aria-label={`Priority for ${agent.name}`}
+                    value={task.priority}
+                    onChange={(e) => onTaskChange(index, 'priority', e.target.value as Priority)}
+                    className={`px-2 py-0.5 text-xs font-bold rounded-full border ${getPriorityClass(task.priority)} appearance-none text-center cursor-pointer focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-cyan-400 transition-all`}
+                    aria-label={`Priority for ${task.name}`}
                 >
                     <option className="bg-slate-700 text-white" value="High">High</option>
                     <option className="bg-slate-700 text-white" value="Medium">Medium</option>
@@ -71,9 +72,9 @@ const AgentItem: React.FC<{
                 </select>
             </div>
              <textarea
-                value={agent.description}
-                onChange={e => onAgentChange(index, 'description', e.target.value)}
-                placeholder="Agent instructions..."
+                value={task.description}
+                onChange={e => onTaskChange(index, 'description', e.target.value)}
+                placeholder="Task instructions..."
                 rows={2}
                 className="w-full p-1 bg-slate-900/50 border border-slate-700/50 rounded text-slate-400 focus:ring-1 focus:ring-cyan-500 focus:border-cyan-500 text-xs resize-y"
             />
@@ -86,7 +87,7 @@ const AgentItem: React.FC<{
                 </button>
                 {showReasoning && (
                     <p className="text-slate-500 italic border-l-2 border-slate-600 pl-2 mt-1 animate-fade-in">
-                        "{agent.priorityReasoning}"
+                        "{task.priorityReasoning}"
                     </p>
                 )}
             </div>
@@ -98,11 +99,11 @@ const AgentItem: React.FC<{
 const AnalysisResultView: React.FC<{ 
     result: AnalysisResult;
     originalResult: AnalysisResult;
-    onAgentChange: (agentIndex: number, field: keyof Agent, value: any) => void;
+    onTaskChange: (taskIndex: number, field: keyof Task, value: any) => void;
     onToolChange: (index: number, field: keyof Tool, value: string) => void;
     onAddTool: () => void;
     onRemoveTool: (index: number) => void;
-}> = ({ result, originalResult, onAgentChange, onToolChange, onAddTool, onRemoveTool }) => {
+}> = ({ result, originalResult, onTaskChange, onToolChange, onAddTool, onRemoveTool }) => {
   const [copyButtonText, setCopyButtonText] = useState('Copy Prompt');
 
   const handleCopy = (e: React.MouseEvent) => {
@@ -133,10 +134,10 @@ const AnalysisResultView: React.FC<{
       <p className="mt-2 p-2 bg-slate-800 border border-slate-600 rounded text-slate-300 whitespace-pre-wrap font-mono text-xs">{result.improvedPrompt}</p>
     </details>
     <details className="bg-slate-900/50 p-3 rounded-md border border-slate-600" open>
-      <summary className="font-semibold text-cyan-300 cursor-pointer">AGENT ROSTER ({result.agents.length})</summary>
+      <summary className="font-semibold text-cyan-300 cursor-pointer">TASK LIST ({result.tasks.length})</summary>
       <ul className="mt-2 space-y-2">
-        {result.agents.map((agent, index) => (
-           <AgentItem key={agent.name} agent={agent} index={index} onAgentChange={onAgentChange} />
+        {result.tasks.map((task, index) => (
+           <TaskItem key={task.id} task={task} index={index} onTaskChange={onTaskChange} />
         ))}
       </ul>
     </details>
@@ -272,10 +273,9 @@ const ProjectManagerChat: React.FC<ProjectManagerChatProps> = ({
     setEditableResult(analysisResult ? JSON.parse(JSON.stringify(analysisResult)) : null);
   }, [analysisResult]);
 
-  const agentsHaveChanged = useMemo(() => {
+  const tasksHaveChanged = useMemo(() => {
     if (!analysisResult || !editableResult) return false;
-    // Using stringify is a simple way to deep compare. For very large objects, this could be optimized.
-    return JSON.stringify(analysisResult.agents) !== JSON.stringify(editableResult.agents);
+    return JSON.stringify(analysisResult.tasks) !== JSON.stringify(editableResult.tasks);
   }, [analysisResult, editableResult]);
   
   const toolsHaveChanged = useMemo(() => {
@@ -292,11 +292,11 @@ const ProjectManagerChat: React.FC<ProjectManagerChatProps> = ({
     }
   };
 
-  const handleAgentChange = (agentIndex: number, field: keyof Agent, value: any) => {
+  const handleTaskChange = (taskIndex: number, field: keyof Task, value: any) => {
     if (!editableResult) return;
-    const updatedAgents = [...editableResult.agents];
-    updatedAgents[agentIndex] = { ...updatedAgents[agentIndex], [field]: value };
-    setEditableResult({ ...editableResult, agents: updatedAgents });
+    const updatedTasks = [...editableResult.tasks];
+    updatedTasks[taskIndex] = { ...updatedTasks[taskIndex], [field]: value };
+    setEditableResult({ ...editableResult, tasks: updatedTasks });
   };
   
   const handleToolChange = (index: number, field: keyof Tool, value: string) => {
@@ -332,18 +332,17 @@ const ProjectManagerChat: React.FC<ProjectManagerChatProps> = ({
 
   const handleRegeneratePlan = () => {
     if (!editableResult) return;
-    const message = `I have adjusted the plan. Please review and regenerate the plan, updating agent descriptions, tool assignments, and priority reasoning as necessary based on these updated instructions, priorities, and toolkit. Here is the updated structure:\n\n${JSON.stringify({ agents: editableResult.agents, tools: editableResult.tools }, null, 2)}`;
+    const message = `I have adjusted the plan. Please review and regenerate the plan, updating task descriptions, tool assignments, and priority reasoning as necessary based on these updated instructions, priorities, and toolkit. Here is the updated structure:\n\n${JSON.stringify({ tasks: editableResult.tasks, tools: editableResult.tools }, null, 2)}`;
     onSendMessage(message);
   };
 
   const renderContent = (content: ChatMessage['content']) => {
     if (isAnalysisResult(content)) {
-      // Use the editable result for rendering if it exists
       const resultToRender = editableResult || content;
       return <AnalysisResultView 
         result={resultToRender} 
-        originalResult={content} // The original result from chat history
-        onAgentChange={handleAgentChange} 
+        originalResult={content}
+        onTaskChange={handleTaskChange} 
         onToolChange={handleToolChange}
         onAddTool={handleAddTool}
         onRemoveTool={handleRemoveTool}
@@ -355,7 +354,7 @@ const ProjectManagerChat: React.FC<ProjectManagerChatProps> = ({
     return <p className="whitespace-pre-wrap">{String(content)}</p>;
   }
 
-  const hasChanges = agentsHaveChanged || toolsHaveChanged;
+  const hasChanges = tasksHaveChanged || toolsHaveChanged;
 
   return (
     <div className="w-full md:w-[450px] bg-slate-950/70 backdrop-blur-sm border-r border-slate-700/50 p-4 flex flex-col h-full">
@@ -460,10 +459,10 @@ const ProjectManagerChat: React.FC<ProjectManagerChatProps> = ({
               onClick={onLaunch}
               disabled={isSwarming || !analysisResult || hasChanges}
               className="w-full flex items-center justify-center px-4 py-3 bg-cyan-600 text-white font-bold rounded-md hover:bg-cyan-700 disabled:bg-slate-600 disabled:cursor-not-allowed transition-all duration-300 transform hover:scale-105 shadow-[0_0_15px_rgba(34,211,238,0.5)]"
-              title={hasChanges ? "Please regenerate the plan before deploying" : "Deploy the swarm"}
+              title={hasChanges ? "Please regenerate the plan before deploying" : "Deploy"}
             >
               <RocketIcon />
-              {isSwarming ? 'SWARM IN PROGRESS...' : 'DEPLOY SWARM'}
+              {isSwarming ? 'IN PROGRESS...' : 'DEPLOY'}
             </button>
           </div>
         )}

@@ -1,9 +1,11 @@
 
+
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import ProjectManagerChat from './components/ProjectManagerChat';
 import ResultsDisplay from './components/ResultsDisplay';
 import { generateSingleResponse, createProjectManagerChat, askProjectManager, generateExecutiveSummary } from './services/geminiService';
-import { ResponseItem, ResponseStatus, AnalysisResult, ChatMessage } from './types';
+// FIX: Import the Task type to help with type inference.
+import { ResponseItem, ResponseStatus, AnalysisResult, ChatMessage, Task } from './types';
 import type { Chat } from '@google/genai';
 
 
@@ -28,6 +30,8 @@ function App() {
   const [swarmJustCompleted, setSwarmJustCompleted] = useState<boolean>(false);
   const [executionPhase, setExecutionPhase] = useState<string | null>(null);
 
+  const [runningTaskIds, setRunningTaskIds] = useState<Set<number>>(new Set());
+
   const handleReset = useCallback(() => {
     setAnalysisResult(null);
     setAnalysisError(null);
@@ -44,6 +48,7 @@ function App() {
     setIsModelThinking(false);
     setSwarmJustCompleted(false);
     setExecutionPhase(null);
+    setRunningTaskIds(new Set());
   }, []);
 
   const handleSendMessage = useCallback(async (message: string) => {
@@ -54,6 +59,7 @@ function App() {
     setAnalysisError(null);
     setSwarmError(null);
     setResponses([]);
+    setRunningTaskIds(new Set());
 
     try {
       if (!chatSessionRef.current) {
@@ -77,20 +83,17 @@ function App() {
   const processStream = useCallback(async (responseItem: ResponseItem) => {
     if (!analysisResult) return;
 
-    // Direct mapping of responseItem.id to agent index
-    const agentDef = analysisResult.agents[responseItem.id];
-    if (!agentDef) {
-        setResponses(prev => prev.map(r => r.id === responseItem.id ? { ...r, status: ResponseStatus.ERROR, error: `Agent definition for ID ${responseItem.id} not found.` } : r));
+    const taskDef = analysisResult.tasks.find(t => t.id === responseItem.id);
+    if (!taskDef) {
+        setResponses(prev => prev.map(r => r.id === responseItem.id ? { ...r, status: ResponseStatus.ERROR, error: `Task definition for ID ${responseItem.id} not found.` } : r));
         return;
     }
     
-    // Create a specific prompt for this agent
-    const agentSpecificPrompt = `**Overall Mission:**\n${analysisResult.improvedPrompt}\n\n---\n\n**Your Role (${agentDef.name}):**\n${agentDef.description}\n\n**Your Priority:** ${agentDef.priority} (${agentDef.priorityReasoning})\n\n**Tools available to you:**\n${agentDef.tools && agentDef.tools.length > 0 ? agentDef.tools.join(', ') : 'None'}\n\n---\n\nNow, please execute your task based on your role and the overall mission. Provide your output below.`;
+    const agentSpecificPrompt = `**Overall Mission:**\n${analysisResult.improvedPrompt}\n\n---\n\n**Your Task (${taskDef.name}):**\n${taskDef.description}\n\n**Task Priority:** ${taskDef.priority} (${taskDef.priorityReasoning})\n\n**Tools available to you:**\n${taskDef.tools && taskDef.tools.length > 0 ? taskDef.tools.join(', ') : 'None'}\n\n---\n\nNow, please execute your task. Provide your output below.`;
 
     let activeTool: string | null = null;
     try {
-      // Simulate tool activation
-      const agentTools = agentDef.tools || [];
+      const agentTools = taskDef.tools || [];
       if (agentTools.length > 0) {
           activeTool = agentTools[Math.floor(Math.random() * agentTools.length)];
           setResponses(prev => prev.map(r => r.id === responseItem.id ? { ...r, activeTool } : r));
@@ -124,85 +127,139 @@ function App() {
     }
   }, [analysisResult, model]);
 
+  // Orchestration Engine
+  useEffect(() => {
+    if (!isSwarming || !analysisResult) return;
+
+    // FIX: Explicitly type taskMap to ensure correct type inference.
+    const taskMap: Map<number, Task> = new Map(analysisResult.tasks.map(t => [t.id, t]));
+    const completedTaskIds = new Set(responses.filter(r => r.status === ResponseStatus.SUCCESS).map(r => r.id));
+
+    const runnableTasks = responses
+        .filter(r => r.status === ResponseStatus.PENDING && !runningTaskIds.has(r.id))
+        .map(r => taskMap.get(r.id)!)
+        .filter(task => task.dependencies.every(depId => completedTaskIds.has(depId)));
+
+    if (runnableTasks.length > 0) {
+        const newRunningIds = new Set(runningTaskIds);
+        runnableTasks.forEach(t => newRunningIds.add(t.id));
+        setRunningTaskIds(newRunningIds);
+        setExecutionPhase(`Executing ${runnableTasks.length} task(s)...`);
+
+        runnableTasks.forEach(task => {
+            const responseItem = responses.find(r => r.id === task.id)!;
+            processStream(responseItem).finally(() => {
+                setRunningTaskIds(prev => {
+                    const next = new Set(prev);
+                    next.delete(task.id);
+                    return next;
+                });
+            });
+        });
+    } else {
+        const isStillRunning = runningTaskIds.size > 0;
+        const hasPending = responses.some(r => r.status === ResponseStatus.PENDING);
+        const hasFailed = responses.some(r => r.status === ResponseStatus.ERROR);
+        
+        if (!isStillRunning && !hasPending) { // All done (either success or failed)
+             setIsSwarming(false);
+             setSwarmJustCompleted(true);
+             setExecutionPhase(null);
+        } else if (!isStillRunning && hasPending && !hasFailed) { // Deadlock
+            const pendingTaskNames = responses
+                .filter(r => r.status === ResponseStatus.PENDING)
+                .map(r => taskMap.get(r.id)?.name || `ID ${r.id}`)
+                .join(', ');
+            setSwarmError(`Deadlock detected. The following tasks cannot run due to unmet dependencies: ${pendingTaskNames}`);
+            setResponses(prev => prev.map(r => r.status === ResponseStatus.PENDING ? {...r, status: ResponseStatus.ERROR, error: 'Deadlock: dependency not met.'} : r));
+            setIsSwarming(false);
+        }
+    }
+  }, [responses, isSwarming, analysisResult, runningTaskIds, processStream]);
+
 
   const handleLaunchSwarm = useCallback(async () => {
     if (!analysisResult || isSwarming) return;
 
     setIsSwarming(true);
     setSwarmError(null);
-    const swarmSize = analysisResult.agents.length;
-    const initialResponses: ResponseItem[] = Array.from({ length: swarmSize }, (_, i) => ({
-      id: i,
+    setRunningTaskIds(new Set());
+    const initialResponses: ResponseItem[] = analysisResult.tasks.map(task => ({
+      id: task.id,
       status: ResponseStatus.PENDING,
-      content: '', // Initialize with empty string for streaming
+      content: '',
       activeTool: null,
     }));
     setResponses(initialResponses);
+    setExecutionPhase('Initializing Orchestrator...');
+  }, [analysisResult, isSwarming]);
 
-    try {
-        const agentsWithResponses = initialResponses.map(responseItem => ({
-            responseItem,
-            agentDef: analysisResult.agents[responseItem.id]
-        }));
 
-        const highPriority = agentsWithResponses.filter(a => a.agentDef.priority === 'High');
-        const mediumPriority = agentsWithResponses.filter(a => a.agentDef.priority === 'Medium');
-        const lowPriority = agentsWithResponses.filter(a => a.agentDef.priority === 'Low');
+  const handleRetryTask = useCallback(async (taskId: number) => {
+    if (isSwarming || !analysisResult) return;
 
-        const runBatch = async (batch: typeof agentsWithResponses) => {
-            const promises = batch.map(item => processStream(item.responseItem));
-            await Promise.allSettled(promises);
-        };
-
-        if (highPriority.length > 0) {
-            setExecutionPhase('Executing HIGH priority agents...');
-            await runBatch(highPriority);
+    const taskToRetry = responses.find(r => r.id === taskId);
+    if (!taskToRetry) return;
+    
+    const taskMap = new Map(analysisResult.tasks.map(t => [t.id, t]));
+    const dependentTasks = new Set<number>([taskId]);
+    
+    // Recursively find all tasks that depend on the one being retried
+    const findDependents = (id: number) => {
+      analysisResult.tasks.forEach(task => {
+        if (task.dependencies.includes(id) && !dependentTasks.has(task.id)) {
+          dependentTasks.add(task.id);
+          findDependents(task.id);
         }
-        if (mediumPriority.length > 0) {
-            setExecutionPhase('Executing MEDIUM priority agents...');
-            await runBatch(mediumPriority);
-        }
-        if (lowPriority.length > 0) {
-            setExecutionPhase('Executing LOW priority agents...');
-            await runBatch(lowPriority);
-        }
-
-    } catch (error: any) {
-      setSwarmError(error.message || 'An unexpected error occurred while launching the swarm. Please try again.');
-    } finally {
-      setIsSwarming(false);
-      setSwarmJustCompleted(true);
-      setExecutionPhase(null);
-    }
-  }, [analysisResult, isSwarming, processStream]);
-
-
-  const handleRetryAgent = useCallback(async (agentId: number) => {
-    if (isSwarming) return;
-    const responseItemToRetry = responses.find(r => r.id === agentId);
-    if (!responseItemToRetry) return;
+      });
+    };
+    findDependents(taskId);
 
     setIsSwarming(true);
     setSwarmError(null);
 
-    // Reset the specific agent's state before retrying
-    const resetItem = {
-      ...responseItemToRetry,
-      status: ResponseStatus.PENDING,
-      content: '',
-      error: undefined,
-      activeTool: null,
-      toolUsed: undefined,
-    };
+    setResponses(prev => prev.map(r => {
+      if (dependentTasks.has(r.id)) {
+        return {
+          ...r,
+          status: ResponseStatus.PENDING,
+          content: '',
+          error: undefined,
+          activeTool: null,
+          toolUsed: undefined,
+        };
+      }
+      return r;
+    }));
+  }, [isSwarming, responses, analysisResult]);
 
-    setResponses(prev => prev.map(r => (r.id === agentId ? resetItem : r)));
 
-    // Use a fresh reference to the reset item for the stream
-    await processStream(resetItem);
+  const handleRetryAllFailed = useCallback(async () => {
+    if (isSwarming) return;
 
-    setIsSwarming(false);
+    const failedResponses = responses.filter(r => r.status === ResponseStatus.ERROR);
+    if (failedResponses.length === 0) return;
 
-  }, [isSwarming, responses, processStream]);
+    setIsSwarming(true);
+    setSwarmError(null);
+    setExecutionPhase(`Retrying ${failedResponses.length} failed task(s)...`);
+
+    const taskIdsToRetry = new Set(failedResponses.map(r => r.id));
+
+    setResponses(prev => prev.map(r => {
+        if (taskIdsToRetry.has(r.id)) {
+            return {
+                ...r,
+                status: ResponseStatus.PENDING,
+                content: '',
+                error: undefined,
+                activeTool: null,
+                toolUsed: undefined,
+            };
+        }
+        return r;
+    }));
+  }, [isSwarming, responses]);
 
 
   useEffect(() => {
@@ -211,7 +268,7 @@ function App() {
     const generateSummary = async () => {
         setSwarmJustCompleted(false); // Consume the event
         setIsModelThinking(true);
-        setChatHistory(prev => [...prev, { role: 'model', content: "Swarm mission complete. Compiling executive summary..." }]);
+        setChatHistory(prev => [...prev, { role: 'model', content: "Mission complete. Compiling executive summary..." }]);
         
         try {
             if (!analysisResult) throw new Error("Mission analysis not found.");
@@ -263,7 +320,8 @@ function App() {
             swarmError={swarmError}
             onDismissSwarmError={() => setSwarmError(null)}
             analysisResult={analysisResult}
-            onRetry={handleRetryAgent}
+            onRetry={handleRetryTask}
+            onRetryAllFailed={handleRetryAllFailed}
             executionPhase={executionPhase}
           />
         </div>

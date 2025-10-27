@@ -5,7 +5,7 @@ import React, { useState, useRef, useLayoutEffect, useMemo } from 'react';
 import { ResponseItem, ResponseStatus, AnalysisResult, Tool, Priority, Task } from '../types';
 import ErrorAlert from './ErrorAlert';
 import TaskDetailModal from './AgentDetailModal';
-import { LoadingSpinner, CheckCircleIcon, ExclamationCircleIcon, HexagonIcon, ToolIcon, PlusIcon, MinusIcon, CenterFocusIcon, FilterIcon, ResetIcon } from './Icons';
+import { LoadingSpinner, CheckCircleIcon, ExclamationCircleIcon, HexagonIcon, ToolIcon, PlusIcon, MinusIcon, CenterFocusIcon, FilterIcon, ResetIcon, GraphIcon, ListIcon } from './Icons';
 
 interface ResultsDisplayProps {
     responses: ResponseItem[];
@@ -543,12 +543,78 @@ const FilterButton: React.FC<{
     </button>
 );
 
+const getPriorityBadgeClass = (priority: Priority | undefined) => {
+    if (!priority) return 'border-slate-500 text-slate-400';
+    switch (priority) {
+        case 'High': return 'border-rose-500/60 text-rose-300';
+        case 'Medium': return 'border-amber-500/60 text-amber-300';
+        case 'Low': return 'border-sky-500/60 text-sky-300';
+        default: return 'border-slate-500/60 text-slate-400';
+    }
+};
+
+const TaskList: React.FC<{
+    responses: ResponseItem[];
+    analysisResult: AnalysisResult;
+    onNodeClick: (id: number) => void;
+}> = ({ responses, analysisResult, onNodeClick }) => {
+    return (
+        <div className="overflow-y-auto h-full pr-2 animate-fade-in">
+            <ul className="space-y-2">
+                {responses.map(response => {
+                    const task = analysisResult.tasks.find(t => t.id === response.id);
+                    if (!task) return null;
+
+                    const statusDisplay = getAgentStatusDisplay(response.status);
+
+                    return (
+                        <li
+                            key={response.id}
+                            className="bg-slate-900/50 border border-slate-700/50 rounded-lg p-3 flex items-center space-x-3 transition-all hover:bg-slate-800/50 hover:border-slate-600"
+                        >
+                            <div className="flex-shrink-0 self-start pt-1">
+                                {getAgentStatusIcon(response.status)}
+                            </div>
+                            <div className="flex-grow min-w-0">
+                                <div className="flex justify-between items-start">
+                                    <p className="font-bold text-slate-200 truncate pr-2">{task.name}</p>
+                                    <span className={`flex-shrink-0 text-xs font-bold border rounded-full px-2 py-0.5 ${getPriorityBadgeClass(task.priority)}`}>
+                                        {task.priority}
+                                    </span>
+                                </div>
+                                <div className="flex items-center text-xs space-x-3 text-slate-400 mt-1.5">
+                                    <span className={`font-semibold ${statusDisplay.colorClass}`}>{statusDisplay.text}</span>
+                                    {response.activeTool && (
+                                        <div className="flex items-center space-x-1 text-violet-400 animate-pulse min-w-0">
+                                            <ToolIcon className="w-3 h-3 flex-shrink-0" />
+                                            <span className="truncate">Using: {response.activeTool}</span>
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+                            <div className="flex-shrink-0">
+                                <button
+                                    onClick={() => onNodeClick(response.id)}
+                                    className="px-3 py-1 bg-slate-700 text-slate-300 text-xs font-bold rounded-md hover:bg-slate-600 transition-colors"
+                                >
+                                    Details
+                                </button>
+                            </div>
+                        </li>
+                    );
+                })}
+            </ul>
+        </div>
+    );
+};
+
 
 const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ responses, isLoading, swarmError, onDismissSwarmError, analysisResult, onRetry, onRetryAllFailed, executionPhase }) => {
     const [selectedTaskId, setSelectedTaskId] = useState<number | null>(null);
     const [statusFilter, setStatusFilter] = useState<ResponseStatus | 'all'>('all');
     const [priorityFilter, setPriorityFilter] = useState<Priority | 'all'>('all');
     const [toolFilter, setToolFilter] = useState<string | 'all'>('all');
+    const [viewMode, setViewMode] = useState<'graph' | 'list'>('graph');
 
     const errorCount = useMemo(() => responses.filter(r => r.status === ResponseStatus.ERROR).length, [responses]);
 
@@ -643,6 +709,26 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ responses, isLoading, s
                                 <FilterButton label="Low" isActive={priorityFilter === 'Low'} onClick={() => setPriorityFilter('Low')} colorClass="bg-sky-500 border-sky-400 text-white" count={priorityCounts.Low} />
                             </div>
                         )}
+                        <div className="flex items-center bg-slate-800 p-1 rounded-full border border-slate-700">
+                            <button
+                                onClick={() => setViewMode('graph')}
+                                className={`px-3 py-1 text-xs font-bold rounded-full transition-all flex items-center space-x-1.5 ${viewMode === 'graph' ? 'bg-cyan-500 text-white shadow-md' : 'text-slate-300 hover:bg-slate-700'}`}
+                                aria-pressed={viewMode === 'graph'}
+                                title="Graph View"
+                            >
+                                <GraphIcon className="w-4 h-4" />
+                                <span>Graph</span>
+                            </button>
+                            <button
+                                onClick={() => setViewMode('list')}
+                                className={`px-3 py-1 text-xs font-bold rounded-full transition-all flex items-center space-x-1.5 ${viewMode === 'list' ? 'bg-cyan-500 text-white shadow-md' : 'text-slate-300 hover:bg-slate-700'}`}
+                                aria-pressed={viewMode === 'list'}
+                                title="List View"
+                            >
+                                <ListIcon className="w-4 h-4" />
+                                <span>List</span>
+                            </button>
+                        </div>
                     </div>
                      {toolCounts && analysisResult.tools.length > 0 && (
                         <div className="flex flex-wrap items-center justify-center gap-x-2 gap-y-3">
@@ -676,12 +762,20 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ responses, isLoading, s
 
                 <div className="flex-1 min-h-0">
                    {filteredResponses.length > 0 ? (
-                        <TaskNetworkGraph
-                            responses={filteredResponses}
-                            onNodeClick={setSelectedTaskId}
-                            analysisResult={analysisResult}
-                            selectedTaskId={selectedTaskId}
-                        />
+                       viewMode === 'graph' ? (
+                            <TaskNetworkGraph
+                                responses={filteredResponses}
+                                onNodeClick={setSelectedTaskId}
+                                analysisResult={analysisResult}
+                                selectedTaskId={selectedTaskId}
+                            />
+                       ) : (
+                            <TaskList
+                                responses={filteredResponses}
+                                analysisResult={analysisResult}
+                                onNodeClick={setSelectedTaskId}
+                            />
+                       )
                    ) : (
                         <div className="flex flex-col items-center justify-center h-full text-slate-500 animate-fade-in">
                             <FilterIcon className="w-16 h-16 text-slate-700 opacity-50" />

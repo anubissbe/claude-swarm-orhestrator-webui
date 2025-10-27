@@ -1,6 +1,6 @@
 
 import React, { useState, useRef, useLayoutEffect } from 'react';
-import { ResponseItem, ResponseStatus, AnalysisResult, Tool } from '../types';
+import { ResponseItem, ResponseStatus, AnalysisResult, Tool, Priority } from '../types';
 import ErrorAlert from './ErrorAlert';
 import AgentDetailModal from './AgentDetailModal';
 import { LoadingSpinner, CheckCircleIcon, ExclamationCircleIcon, HexagonIcon } from './Icons';
@@ -11,6 +11,7 @@ interface ResultsDisplayProps {
     swarmError: string | null;
     onDismissSwarmError: () => void;
     analysisResult: AnalysisResult | null;
+    onRetry: (agentId: number) => void;
 }
 
 const CircularProgressBar: React.FC<{ progress: number; completed: number; total: number }> = ({ progress, completed, total }) => {
@@ -63,6 +64,16 @@ const getStatusClass = (status: ResponseStatus) => {
         case ResponseStatus.ERROR: return 'error';
         case ResponseStatus.PENDING:
         default: return 'pending';
+    }
+};
+
+const getPriorityClass = (priority: Priority | undefined) => {
+    if (!priority) return '';
+    switch (priority) {
+        case 'High': return 'priority-high';
+        case 'Medium': return 'priority-medium';
+        case 'Low': return 'priority-low';
+        default: return '';
     }
 };
 
@@ -145,7 +156,7 @@ const SwarmNetworkGraph: React.FC<{
                     <button
                         key={`node-${node.id}`}
                         onClick={() => onNodeClick(node.id)}
-                        className={`graph-agent-node ${getStatusClass(node.status)} ${node.activeTool ? 'tool-active' : ''}`}
+                        className={`graph-agent-node ${getStatusClass(node.status)} ${node.activeTool ? 'tool-active' : ''} ${getPriorityClass(agent?.priority)}`}
                         style={{
                             top: node.y,
                             left: node.x,
@@ -164,7 +175,7 @@ const SwarmNetworkGraph: React.FC<{
 };
 
 
-const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ responses, isLoading, swarmError, onDismissSwarmError, analysisResult }) => {
+const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ responses, isLoading, swarmError, onDismissSwarmError, analysisResult, onRetry }) => {
     const [selectedAgentId, setSelectedAgentId] = useState<number | null>(null);
 
     if (responses.length === 0 && !swarmError) {
@@ -222,6 +233,7 @@ const ResultsDisplay: React.FC<ResultsDisplayProps> = ({ responses, isLoading, s
                     response={selectedResponse}
                     assignedTools={assignedToolsForModal}
                     onClose={() => setSelectedAgentId(null)}
+                    onRetry={onRetry}
                 />
             )}
         </div>

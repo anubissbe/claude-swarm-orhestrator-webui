@@ -62,13 +62,13 @@ export async function* generateSingleResponse(
 const SYSTEM_INSTRUCTION = `You are a senior software architect and project manager for a multi-agent AI swarm. Your role is to engage in a conversation with a user to define and refine a project plan.
 
 **Initial Interaction:**
-When the user provides their first high-level project request, your primary goal is to break it down into a comprehensive plan that the AI swarm can execute. You must respond ONLY with a valid JSON object adhering to this schema: { improvedPrompt: string, agents: Agent[], tools: Tool[] }. For each agent, you MUST specify which tools from the main toolkit it will use by providing a list of tool names in its 'tools' property.
+When the user provides their first high-level project request, your primary goal is to break it down into a comprehensive plan that the AI swarm can execute. You must respond ONLY with a valid JSON object adhering to this schema: { improvedPrompt: string, agents: Agent[], tools: Tool[] }. For each agent, you MUST specify which tools from the main toolkit it will use by providing a list of tool names in its 'tools' property. Crucially, you must also assess and assign a priority level ('High', 'Medium', or 'Low') to each agent based on its dependencies and impact on the overall project goal. You must provide a specific, brief justification for this priority in the 'priorityReasoning' field. This justification is critical for the user to understand your strategic plan. For example, instead of a generic reason like 'High priority task', provide a concrete explanation like: 'High priority because it establishes the database schema, which all other data-handling agents depend on.' Agents critical for core functionality or that unblock other agents should have a 'High' priority.
 
 **Follow-up Interactions:**
 If the user provides feedback, asks for changes, or suggests new features after the initial plan is generated, you must:
 1. Acknowledge their request.
-2. Incorporate their feedback to create a *new, updated* project plan.
-3. Respond again ONLY with the updated valid JSON object adhering to the same schema, including the tool assignments for each agent.
+2. Incorporate their feedback to create a *new, updated* project plan, re-evaluating agent priorities and their reasoning as needed.
+3. Respond again ONLY with the updated valid JSON object adhering to the same schema, including the tool assignments, priority level, and priority reasoning for each agent.
 
 Your final output for any planning-related message MUST be the JSON object. Do not add any conversational text outside of the JSON structure.`;
 
@@ -91,9 +91,17 @@ const ANALYSIS_SCHEMA = {
                         type: Type.ARRAY,
                         description: "A list of tool names this agent will use from the main toolkit.",
                         items: { type: Type.STRING }
+                    },
+                    priority: {
+                        type: Type.STRING,
+                        description: "The priority of the agent's tasks. Must be one of: 'High', 'Medium', or 'Low'."
+                    },
+                    priorityReasoning: {
+                        type: Type.STRING,
+                        description: "A specific, concise justification for the assigned priority, explaining its impact or dependencies. Example: 'High priority as it sets up the core database schema needed by other agents.'"
                     }
                 },
-                required: ["name", "description", "tools"]
+                required: ["name", "description", "tools", "priority", "priorityReasoning"]
             }
         },
         tools: {
@@ -157,7 +165,6 @@ export const askProjectManager = async (
                 }
                 throw new Error('An unknown error occurred during project planning.');
             }
-            // FIX: Corrected typo from `initialДължина` to `initialDelay`.
             const delay = initialDelay * Math.pow(2, attempt - 1) + (Math.random() * 1000); // Add jitter
             console.warn(`Gemini Chat API failed (attempt ${attempt}/${maxRetries}). Retrying in ${Math.round(delay/1000)}s...`);
             await sleep(delay);
@@ -233,7 +240,7 @@ export const generateExecutiveSummary = async (
     const prompt = `
     **Mission Objective:** ${analysisResult.improvedPrompt}
     
-    **Agent Roster:** ${analysisResult.agents.map(a => a.name).join(', ')}
+    **Agent Roster:** ${analysisResult.agents.map(a => `${a.name} (Priority: ${a.priority})`).join(', ')}
 
     **Tool Usage Summary:**
     ${toolUsage.length > 0 ? JSON.stringify(toolUsage, null, 2) : "No tools were used by the swarm."}

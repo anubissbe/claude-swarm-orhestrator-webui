@@ -15,10 +15,14 @@ export interface ResponseItem {
 }
 
 // New types for analysis
+export type Priority = 'High' | 'Medium' | 'Low';
+
 export interface Agent {
   name: string;
   description: string;
   tools?: string[];
+  priority: Priority;
+  priorityReasoning: string;
 }
 
 export interface Tool {

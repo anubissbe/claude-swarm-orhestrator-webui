@@ -119,6 +119,23 @@
         box-shadow: 0 0 20px 8px rgba(167, 139, 250, 0.4);
     }
 
+    .graph-agent-node::before {
+        content: '';
+        position: absolute;
+        top: 8px;
+        right: 8px;
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        border: 1px solid rgba(0,0,0,0.5);
+        background-color: #475569; /* default slate-600 */
+        transition: background-color 0.3s ease;
+    }
+    .graph-agent-node.priority-high::before { background-color: #ef4444; } /* red-500 */
+    .graph-agent-node.priority-medium::before { background-color: #f59e0b; } /* amber-500 */
+    .graph-agent-node.priority-low::before { background-color: #3b82f6; } /* blue-500 */
+
+
     @keyframes node-fly-in {
         from { opacity: 0; transform: scale(0.2); }
         to { opacity: 1; transform: scale(1); }

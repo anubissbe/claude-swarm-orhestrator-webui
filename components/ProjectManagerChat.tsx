@@ -2,7 +2,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { RocketIcon, ResetIcon } from './Icons';
 import ErrorAlert from './ErrorAlert';
-import type { AnalysisResult, ChatMessage, ExecutiveSummary } from '../types';
+import type { AnalysisResult, ChatMessage, ExecutiveSummary, Priority } from '../types';
 
 interface ProjectManagerChatProps {
   chatHistory: ChatMessage[];
@@ -41,19 +41,34 @@ const ModelTypingIndicator: React.FC = () => (
     </div>
 );
 
+const getPriorityClass = (priority: Priority) => {
+    switch (priority) {
+        case 'High': return 'bg-rose-600/50 border-rose-500 text-rose-200';
+        case 'Medium': return 'bg-amber-600/50 border-amber-500 text-amber-200';
+        case 'Low': return 'bg-sky-600/50 border-sky-500 text-sky-200';
+        default: return 'bg-slate-600/50 border-slate-500 text-slate-300';
+    }
+}
+
 const AnalysisResultView: React.FC<{ result: AnalysisResult }> = ({ result }) => (
   <div className="space-y-3 text-sm animate-fade-in mt-2">
     <details className="bg-slate-900/50 p-3 rounded-md border border-slate-600">
       <summary className="font-semibold text-cyan-300 cursor-pointer">STRATEGIC BRIEFING</summary>
       <p className="mt-2 p-2 bg-slate-800 border border-slate-600 rounded text-slate-300 whitespace-pre-wrap font-mono text-xs">{result.improvedPrompt}</p>
     </details>
-    <details className="bg-slate-900/50 p-3 rounded-md border border-slate-600">
+    <details className="bg-slate-900/50 p-3 rounded-md border border-slate-600" open>
       <summary className="font-semibold text-cyan-300 cursor-pointer">AGENT ROSTER</summary>
       <ul className="mt-2 space-y-2">
         {result.agents.map(agent => (
           <li key={agent.name} className="p-2 bg-slate-800/70 rounded">
-            <strong className="text-slate-200 font-mono text-xs">{agent.name}:</strong>
-            <span className="text-slate-400 ml-2 text-xs">{agent.description}</span>
+            <div className="flex justify-between items-center">
+                <strong className="text-slate-200 font-mono text-xs">{agent.name}</strong>
+                <span className={`px-2 py-0.5 text-xs font-bold rounded-full border ${getPriorityClass(agent.priority)}`}>
+                    {agent.priority}
+                </span>
+            </div>
+            <p className="text-slate-400 text-xs mt-1">{agent.description}</p>
+            <p className="text-slate-500 text-xs mt-1 italic border-l-2 border-slate-600 pl-2">"{agent.priorityReasoning}"</p>
           </li>
         ))}
       </ul>

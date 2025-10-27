@@ -72,6 +72,47 @@ function App() {
   }, [isModelThinking, isSwarming]);
 
 
+  const processStream = useCallback(async (responseItem: ResponseItem) => {
+    if (!analysisResult) return;
+    let activeTool: string | null = null;
+    try {
+      // Simulate tool activation
+      const agentDef = analysisResult.agents[responseItem.id % analysisResult.agents.length];
+      const agentTools = agentDef.tools || [];
+      if (agentTools.length > 0) {
+          activeTool = agentTools[Math.floor(Math.random() * agentTools.length)];
+          setResponses(prev => prev.map(r => r.id === responseItem.id ? { ...r, activeTool } : r));
+      }
+
+      const stream = generateSingleResponse(analysisResult.improvedPrompt, model);
+      for await (const chunk of stream) {
+        setResponses(prev =>
+          prev.map(r =>
+            r.id === responseItem.id
+              ? { ...r, content: (r.content || '') + chunk }
+              : r
+          )
+        );
+      }
+      setResponses(prev =>
+        prev.map(r =>
+          r.id === responseItem.id
+            ? { ...r, status: ResponseStatus.SUCCESS, activeTool: null, toolUsed: activeTool ?? undefined }
+            : r
+        )
+      );
+    } catch (error: any) {
+      setResponses(prev =>
+        prev.map(r =>
+          r.id === responseItem.id
+            ? { ...r, status: ResponseStatus.ERROR, error: error.stack || error.message || 'An unknown stream error occurred', activeTool: null, toolUsed: activeTool ?? undefined }
+            : r
+        )
+      );
+    }
+  }, [analysisResult, model]);
+
+
   const handleLaunchSwarm = useCallback(async () => {
     if (!analysisResult || isSwarming) return;
 
@@ -85,45 +126,6 @@ function App() {
     }));
     setResponses(initialResponses);
 
-    const processStream = async (responseItem: ResponseItem) => {
-      let activeTool: string | null = null;
-      try {
-        // Simulate tool activation
-        const agentDef = analysisResult.agents[responseItem.id % analysisResult.agents.length];
-        const agentTools = agentDef.tools || [];
-        if (agentTools.length > 0) {
-            activeTool = agentTools[Math.floor(Math.random() * agentTools.length)];
-            setResponses(prev => prev.map(r => r.id === responseItem.id ? { ...r, activeTool } : r));
-        }
-
-        const stream = generateSingleResponse(analysisResult.improvedPrompt, model);
-        for await (const chunk of stream) {
-          setResponses(prev =>
-            prev.map(r =>
-              r.id === responseItem.id
-                ? { ...r, content: (r.content || '') + chunk }
-                : r
-            )
-          );
-        }
-        setResponses(prev =>
-          prev.map(r =>
-            r.id === responseItem.id
-              ? { ...r, status: ResponseStatus.SUCCESS, activeTool: null, toolUsed: activeTool ?? undefined }
-              : r
-          )
-        );
-      } catch (error: any) {
-        setResponses(prev =>
-          prev.map(r =>
-            r.id === responseItem.id
-              ? { ...r, status: ResponseStatus.ERROR, error: error.stack || error.message || 'An unknown stream error occurred', activeTool: null, toolUsed: activeTool ?? undefined }
-              : r
-          )
-        );
-      }
-    };
-
     try {
       const swarmPromises = initialResponses.map(processStream);
       await Promise.allSettled(swarmPromises);
@@ -133,7 +135,36 @@ function App() {
       setIsSwarming(false);
       setSwarmJustCompleted(true);
     }
-  }, [analysisResult, swarmSize, model, isSwarming]);
+  }, [analysisResult, swarmSize, model, isSwarming, processStream]);
+
+
+  const handleRetryAgent = useCallback(async (agentId: number) => {
+    if (isSwarming) return;
+    const responseItemToRetry = responses.find(r => r.id === agentId);
+    if (!responseItemToRetry) return;
+
+    setIsSwarming(true);
+    setSwarmError(null);
+
+    // Reset the specific agent's state before retrying
+    const resetItem = {
+      ...responseItemToRetry,
+      status: ResponseStatus.PENDING,
+      content: '',
+      error: undefined,
+      activeTool: null,
+      toolUsed: undefined,
+    };
+
+    setResponses(prev => prev.map(r => (r.id === agentId ? resetItem : r)));
+
+    // Use a fresh reference to the reset item for the stream
+    await processStream(resetItem);
+
+    setIsSwarming(false);
+
+  }, [isSwarming, responses, processStream]);
+
 
   useEffect(() => {
     if (!swarmJustCompleted) return;
@@ -193,6 +224,7 @@ function App() {
             swarmError={swarmError}
             onDismissSwarmError={() => setSwarmError(null)}
             analysisResult={analysisResult}
+            onRetry={handleRetryAgent}
           />
         </div>
       </main>
